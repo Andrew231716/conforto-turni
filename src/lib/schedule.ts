@@ -105,14 +105,24 @@ export function generateProgramAssignments(
   }
 
   const load = new Map<string, number>();
+  /** Indice settimana dell'ultimo incarico (visita o contatto) */
+  const lastWeekIndex = new Map<string, number>();
   for (const g of options.people.filter((p) => p.role === "giovane")) {
     load.set(g.id, 0);
+  }
+
+  // Se c'è un programma precedente, considera l'ultima settimana come "settimana -1"
+  // per chi aveva un incarico nell'ultima settimana di quel programma.
+  if (rules.skipConsecutiveWeeks && options.previousProgram) {
+    seedLastWeekFromPrevious(options.previousProgram, lastWeekIndex);
   }
 
   const visits: Assignment[] = [];
   const contacts: Assignment[] = [];
 
   options.weeks.forEach((week, wi) => {
+    const busyThisWeek = new Set<string>();
+
     const recipient =
       visitRecipients[wi % Math.max(visitRecipients.length, 1)];
     if (!recipient) {
@@ -127,18 +137,32 @@ export function generateProgramAssignments(
           ? giovaniVisitaStruttura
           : giovaniVisitaCasa;
 
-      const pair = pickPair(pool, recipient, rules, load);
-      if (!pair) {
+      const pairResult = pickPair(pool, recipient, rules, load, {
+        weekIndex: wi,
+        busyThisWeek,
+        lastWeekIndex,
+      });
+
+      if (!pairResult) {
         warnings.push(
           `Settimana ${week.label}: impossibile formare una coppia valida per ${recipient.name} (${visitType}).`
         );
       } else {
-        pair.forEach((id) => load.set(id, (load.get(id) ?? 0) + 1));
+        if (pairResult.relaxedGap) {
+          warnings.push(
+            `Settimana ${week.label}: per la visita a ${recipient.name} non era possibile saltare una settimana per tutti gli incaricati.`
+          );
+        }
+        pairResult.ids.forEach((id) => {
+          load.set(id, (load.get(id) ?? 0) + 1);
+          lastWeekIndex.set(id, wi);
+          busyThisWeek.add(id);
+        });
         visits.push({
           id: nanoid(10),
           weekId: week.id,
           kind: "visita",
-          assigneeIds: pair,
+          assigneeIds: pairResult.ids,
           recipientId: recipient.id,
           visitType,
         });
@@ -148,33 +172,59 @@ export function generateProgramAssignments(
     const contactRecipient =
       contactRecipients[wi % Math.max(contactRecipients.length, 1)];
     if (contactRecipient) {
-      const usedThisWeek = visits.find((v) => v.weekId === week.id)?.assigneeIds ?? [];
-      const solo = pickSolo(
+      const soloResult = pickSolo(
         giovaniContatto,
         contactRecipient,
         rules,
         load,
-        usedThisWeek
+        {
+          weekIndex: wi,
+          busyThisWeek,
+          lastWeekIndex,
+        }
       );
-      if (solo) {
-        load.set(solo, (load.get(solo) ?? 0) + 1);
+      if (!soloResult) {
+        warnings.push(
+          `Settimana ${week.label}: nessun giovane disponibile per il contatto (già impegnati o regole non soddisfatte).`
+        );
+      } else {
+        if (soloResult.relaxedGap) {
+          warnings.push(
+            `Settimana ${week.label}: contatto a ${contactRecipient.name} assegnato senza pausa di una settimana (non c'erano alternative).`
+          );
+        }
+        load.set(soloResult.id, (load.get(soloResult.id) ?? 0) + 1);
+        lastWeekIndex.set(soloResult.id, wi);
+        busyThisWeek.add(soloResult.id);
         contacts.push({
           id: nanoid(10),
           weekId: week.id,
           kind: "contatto",
-          assigneeIds: [solo],
+          assigneeIds: [soloResult.id],
           recipientId: contactRecipient.id,
           visitType: "Telefonata/Messaggio/Conversazione in sala",
         });
-      } else {
-        warnings.push(
-          `Settimana ${week.label}: nessun giovane disponibile per il contatto.`
-        );
       }
     }
   });
 
   return { visits, contacts, warnings };
+}
+
+/** Marca come "settimana -1" chi aveva incarico nell'ultima settimana del programma precedente */
+function seedLastWeekFromPrevious(
+  previous: Program,
+  lastWeekIndex: Map<string, number>
+) {
+  if (!previous.weeks.length) return;
+  const lastWeekId = previous.weeks[previous.weeks.length - 1]?.id;
+  if (!lastWeekId) return;
+  for (const a of [...previous.visits, ...previous.contacts]) {
+    if (a.weekId !== lastWeekId) continue;
+    for (const id of a.assigneeIds) {
+      lastWeekIndex.set(id, -1);
+    }
+  }
 }
 
 /** Ordina destinatari per cycleOrder poi nome */
@@ -217,7 +267,6 @@ function resolveList(
 ): Person[] {
   if (preferred && preferred.length) {
     const byId = new Map(fallback.map((p) => [p.id, p]));
-    // also allow ids from preferred even if filtered — look in preferred only from fallback
     return preferred.map((id) => byId.get(id)).filter(Boolean) as Person[];
   }
   return fallback;
@@ -250,15 +299,67 @@ function rankPool(
   return list;
 }
 
+interface AvailabilityCtx {
+  weekIndex: number;
+  busyThisWeek: Set<string>;
+  lastWeekIndex: Map<string, number>;
+}
+
+function filterAvailable(
+  pool: Person[],
+  rules: ScheduleRules,
+  ctx: AvailabilityCtx,
+  enforceGap: boolean
+): Person[] {
+  return pool.filter((g) => {
+    if (rules.noDoubleDutySameWeek && ctx.busyThisWeek.has(g.id)) {
+      return false;
+    }
+    if (enforceGap && rules.skipConsecutiveWeeks) {
+      const last = ctx.lastWeekIndex.get(g.id);
+      if (last !== undefined && last === ctx.weekIndex - 1) {
+        return false;
+      }
+    }
+    return true;
+  });
+}
+
 function pickPair(
   giovani: Person[],
   recipient: Person,
   rules: ScheduleRules,
+  load: Map<string, number>,
+  ctx: AvailabilityCtx
+): { ids: string[]; relaxedGap: boolean } | null {
+  const baseEligible = giovani.filter((g) =>
+    canPairWith(g, recipient, rules)
+  );
+
+  // Prima prova con pausa di una settimana; se non basta, rilassa solo quel vincolo
+  for (const enforceGap of [true, false] as const) {
+    if (enforceGap && !rules.skipConsecutiveWeeks) continue;
+
+    const eligible = filterAvailable(baseEligible, rules, ctx, enforceGap);
+    if (eligible.length < rules.visitPairSize) continue;
+
+    const pair = selectPairFromEligible(eligible, recipient, rules, load);
+    if (pair) {
+      return {
+        ids: pair,
+        relaxedGap: rules.skipConsecutiveWeeks && !enforceGap,
+      };
+    }
+  }
+  return null;
+}
+
+function selectPairFromEligible(
+  eligible: Person[],
+  recipient: Person,
+  rules: ScheduleRules,
   load: Map<string, number>
 ): string[] | null {
-  const eligible = giovani.filter((g) => canPairWith(g, recipient, rules));
-  if (eligible.length < rules.visitPairSize) return null;
-
   const genders: Array<"M" | "F"> =
     recipient.isCouple && rules.malePairsForCoupleRecipients
       ? ["M", "F"]
@@ -267,7 +368,7 @@ function pickPair(
         : ["M", "F"];
 
   for (const gender of genders) {
-    let pool = rules.sameGenderPairs
+    const pool = rules.sameGenderPairs
       ? eligible.filter((g) => g.gender === gender)
       : eligible;
     if (pool.length < 2) continue;
@@ -280,10 +381,11 @@ function pickPair(
     );
 
     if (rules.sameGenderPairs) {
-      // pick two of same gender; if randomize, shuffle among lowest-load band
       if (rules.randomizeYouth && rules.balanceWorkload) {
         const minLoad = load.get(ranked[0].id) ?? 0;
-        const band = ranked.filter((p) => (load.get(p.id) ?? 0) <= minLoad + 1);
+        const band = ranked.filter(
+          (p) => (load.get(p.id) ?? 0) <= minLoad + 1
+        );
         const picked = shuffle(band).slice(0, 2);
         if (picked.length >= 2) return [picked[0].id, picked[1].id];
       }
@@ -316,31 +418,46 @@ function pickSolo(
   recipient: Person,
   rules: ScheduleRules,
   load: Map<string, number>,
-  excludeIds: string[]
-): string | null {
-  const eligible = giovani
-    .filter((g) => !excludeIds.includes(g.id))
-    .filter((g) => canPairWith(g, recipient, rules));
-
-  const pool = eligible.length
-    ? eligible
-    : giovani.filter((g) => !excludeIds.includes(g.id));
-
-  if (!pool.length) return null;
-
-  const ranked = rankPool(
-    pool,
-    load,
-    rules.randomizeYouth,
-    rules.balanceWorkload
+  ctx: AvailabilityCtx
+): { id: string; relaxedGap: boolean } | null {
+  const baseEligible = giovani.filter((g) =>
+    canPairWith(g, recipient, rules)
   );
 
-  if (rules.randomizeYouth && rules.balanceWorkload) {
-    const minLoad = load.get(ranked[0].id) ?? 0;
-    const band = ranked.filter((p) => (load.get(p.id) ?? 0) <= minLoad + 1);
-    return shuffle(band)[0]?.id ?? ranked[0].id;
+  for (const enforceGap of [true, false] as const) {
+    if (enforceGap && !rules.skipConsecutiveWeeks) continue;
+
+    let pool = filterAvailable(baseEligible, rules, ctx, enforceGap);
+    // Se nessuno rispetta le regole di genere, ripiega su chi è solo libero
+    if (!pool.length) {
+      pool = filterAvailable(giovani, rules, ctx, enforceGap);
+    }
+    if (!pool.length) continue;
+
+    const ranked = rankPool(
+      pool,
+      load,
+      rules.randomizeYouth,
+      rules.balanceWorkload
+    );
+
+    let id: string | undefined;
+    if (rules.randomizeYouth && rules.balanceWorkload) {
+      const minLoad = load.get(ranked[0].id) ?? 0;
+      const band = ranked.filter((p) => (load.get(p.id) ?? 0) <= minLoad + 1);
+      id = shuffle(band)[0]?.id ?? ranked[0].id;
+    } else {
+      id = ranked[0]?.id;
+    }
+
+    if (id) {
+      return {
+        id,
+        relaxedGap: rules.skipConsecutiveWeeks && !enforceGap,
+      };
+    }
   }
-  return ranked[0]?.id ?? null;
+  return null;
 }
 
 function canPairWith(

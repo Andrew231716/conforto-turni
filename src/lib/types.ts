@@ -48,6 +48,10 @@ export interface ScheduleRules {
   randomizeYouth: boolean;
   /** Continua il ciclo destinatari dal primo non ancora visitato/sentito */
   continueRecipientCycle: boolean;
+  /** Mai due incarichi (visita o contatto) nella stessa settimana */
+  noDoubleDutySameWeek: boolean;
+  /** Dove possibile, salta almeno una settimana tra un incarico e il successivo */
+  skipConsecutiveWeeks: boolean;
 }
 
 export interface WeekSlot {
@@ -123,6 +127,8 @@ export const DEFAULT_RULES: ScheduleRules = {
   balanceWorkload: true,
   randomizeYouth: true,
   continueRecipientCycle: true,
+  noDoubleDutySameWeek: true,
+  skipConsecutiveWeeks: true,
 };
 
 export const DEFAULT_WHATSAPP: WhatsAppTemplates = {

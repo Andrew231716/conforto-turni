@@ -199,6 +199,16 @@ export default function GeneraPage() {
           label="Combina i giovani in modo casuale (sempre rispettando le regole sotto)"
         />
         <Rule
+          checked={rules.noDoubleDutySameWeek}
+          onChange={(v) => setRules({ ...rules, noDoubleDutySameWeek: v })}
+          label="Niente due incarichi nella stessa settimana (visita e contatto)"
+        />
+        <Rule
+          checked={rules.skipConsecutiveWeeks}
+          onChange={(v) => setRules({ ...rules, skipConsecutiveWeeks: v })}
+          label="Dove possibile, salta almeno una settimana tra un incarico e il successivo"
+        />
+        <Rule
           checked={rules.femaleYouthOnlyVisitFemales}
           onChange={(v) =>
             setRules({ ...rules, femaleYouthOnlyVisitFemales: v })
