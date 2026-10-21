@@ -235,7 +235,7 @@ export default function GeneraPage() {
         <Rule
           checked={rules.balanceWorkload}
           onChange={(v) => setRules({ ...rules, balanceWorkload: v })}
-          label="Bilancia il carico tra i giovani"
+          label="Distribuisci i turni in modo uniforme (stesso numero di incarichi tra i giovani, anche mese per mese)"
         />
       </div>
 

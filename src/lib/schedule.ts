@@ -104,7 +104,10 @@ export function generateProgramAssignments(
     );
   }
 
+  /** Turni totali (visite + contatti) per giovane */
   const load = new Map<string, number>();
+  /** Turni per giovane nel mese (yyyy-MM) — per distribuzione uniforme */
+  const monthLoad = new Map<string, number>();
   /** Indice settimana dell'ultimo incarico (visita o contatto) */
   const lastWeekIndex = new Map<string, number>();
   for (const g of options.people.filter((p) => p.role === "giovane")) {
@@ -120,8 +123,17 @@ export function generateProgramAssignments(
   const visits: Assignment[] = [];
   const contacts: Assignment[] = [];
 
+  const bumpLoad = (id: string, monthKey: string, wi: number) => {
+    load.set(id, (load.get(id) ?? 0) + 1);
+    const mk = `${id}|${monthKey}`;
+    monthLoad.set(mk, (monthLoad.get(mk) ?? 0) + 1);
+    lastWeekIndex.set(id, wi);
+  };
+
   options.weeks.forEach((week, wi) => {
     const busyThisWeek = new Set<string>();
+    const monthKey = format(parseISO(week.startDate), "yyyy-MM");
+    const loads: LoadMaps = { total: load, month: monthLoad, monthKey };
 
     const recipient =
       visitRecipients[wi % Math.max(visitRecipients.length, 1)];
@@ -137,7 +149,7 @@ export function generateProgramAssignments(
           ? giovaniVisitaStruttura
           : giovaniVisitaCasa;
 
-      const pairResult = pickPair(pool, recipient, rules, load, {
+      const pairResult = pickPair(pool, recipient, rules, loads, {
         weekIndex: wi,
         busyThisWeek,
         lastWeekIndex,
@@ -146,18 +158,20 @@ export function generateProgramAssignments(
       if (!pairResult) {
         warnings.push(
           rules.sameGenderPairs
-            ? `Settimana ${week.label}: impossibile formare una coppia dello stesso sesso per ${recipient.name} (${visitType}).`
+            ? `Settimana ${week.label}: non ci sono abbastanza giovani dello stesso sesso per ${recipient.name} (${visitType}).`
             : `Settimana ${week.label}: impossibile formare una coppia valida per ${recipient.name} (${visitType}).`
         );
       } else {
-        if (pairResult.relaxedGap) {
+        if (pairResult.reusedFromPreviousWeek.length) {
+          const names = pairResult.reusedFromPreviousWeek
+            .map((id) => options.people.find((p) => p.id === id)?.name ?? id)
+            .join(", ");
           warnings.push(
-            `Settimana ${week.label}: per la visita a ${recipient.name} non era possibile saltare una settimana per tutti gli incaricati.`
+            `Settimana ${week.label}: per la visita a ${recipient.name} reinserito/i dalla settimana precedente: ${names} (sempre stesso sesso).`
           );
         }
         pairResult.ids.forEach((id) => {
-          load.set(id, (load.get(id) ?? 0) + 1);
-          lastWeekIndex.set(id, wi);
+          bumpLoad(id, monthKey, wi);
           busyThisWeek.add(id);
         });
         visits.push({
@@ -178,7 +192,7 @@ export function generateProgramAssignments(
         giovaniContatto,
         contactRecipient,
         rules,
-        load,
+        loads,
         {
           weekIndex: wi,
           busyThisWeek,
@@ -187,16 +201,18 @@ export function generateProgramAssignments(
       );
       if (!soloResult) {
         warnings.push(
-          `Settimana ${week.label}: nessun giovane disponibile per il contatto (già impegnati o regole non soddisfatte).`
+          `Settimana ${week.label}: nessun giovane disponibile per il contatto (tutti già impegnati in visita).`
         );
       } else {
-        if (soloResult.relaxedGap) {
+        if (soloResult.reusedFromPreviousWeek) {
+          const name =
+            options.people.find((p) => p.id === soloResult.id)?.name ??
+            soloResult.id;
           warnings.push(
-            `Settimana ${week.label}: contatto a ${contactRecipient.name} assegnato senza pausa di una settimana (non c'erano alternative).`
+            `Settimana ${week.label}: contatto a ${contactRecipient.name} — reinserito/a dalla settimana precedente: ${name}.`
           );
         }
-        load.set(soloResult.id, (load.get(soloResult.id) ?? 0) + 1);
-        lastWeekIndex.set(soloResult.id, wi);
+        bumpLoad(soloResult.id, monthKey, wi);
         busyThisWeek.add(soloResult.id);
         contacts.push({
           id: nanoid(10),
@@ -283,9 +299,23 @@ function shuffle<T>(arr: T[]): T[] {
   return a;
 }
 
+interface LoadMaps {
+  total: Map<string, number>;
+  month: Map<string, number>;
+  monthKey: string;
+}
+
+function personMonthLoad(loads: LoadMaps, id: string): number {
+  return loads.month.get(`${id}|${loads.monthKey}`) ?? 0;
+}
+
+/**
+ * Ordina per: meno turni totali → meno turni nel mese → (opzionale) casuale a parità.
+ * Così i turni restano bilanciati su tutto il programma e dentro ogni mese.
+ */
 function rankPool(
   pool: Person[],
-  load: Map<string, number>,
+  loads: LoadMaps,
   randomize: boolean,
   balance: boolean
 ): Person[] {
@@ -293,12 +323,33 @@ function rankPool(
   if (randomize) list = shuffle(list);
   if (balance) {
     list.sort((a, b) => {
-      const diff = (load.get(a.id) ?? 0) - (load.get(b.id) ?? 0);
-      if (diff !== 0) return diff;
+      const totalDiff =
+        (loads.total.get(a.id) ?? 0) - (loads.total.get(b.id) ?? 0);
+      if (totalDiff !== 0) return totalDiff;
+      const monthDiff = personMonthLoad(loads, a.id) - personMonthLoad(loads, b.id);
+      if (monthDiff !== 0) return monthDiff;
       return randomize ? 0 : a.name.localeCompare(b.name, "it");
     });
   }
   return list;
+}
+
+/** Solo chi ha il carico minimo (totale, poi mensile) — distribuzione uniforme */
+function lowestLoadBand(pool: Person[], loads: LoadMaps, rules: ScheduleRules): Person[] {
+  if (!pool.length) return [];
+  const ranked = rankPool(pool, loads, rules.randomizeYouth, true);
+  if (!rules.balanceWorkload) return ranked;
+  const minTotal = loads.total.get(ranked[0].id) ?? 0;
+  const atMinTotal = ranked.filter(
+    (p) => (loads.total.get(p.id) ?? 0) === minTotal
+  );
+  const minMonth = Math.min(
+    ...atMinTotal.map((p) => personMonthLoad(loads, p.id))
+  );
+  const band = atMinTotal.filter(
+    (p) => personMonthLoad(loads, p.id) === minMonth
+  );
+  return rules.randomizeYouth ? shuffle(band) : band;
 }
 
 interface AvailabilityCtx {
@@ -307,152 +358,201 @@ interface AvailabilityCtx {
   lastWeekIndex: Map<string, number>;
 }
 
-function filterAvailable(
-  pool: Person[],
-  rules: ScheduleRules,
-  ctx: AvailabilityCtx,
-  enforceGap: boolean
-): Person[] {
-  return pool.filter((g) => {
-    if (rules.noDoubleDutySameWeek && ctx.busyThisWeek.has(g.id)) {
-      return false;
-    }
-    if (enforceGap && rules.skipConsecutiveWeeks) {
-      const last = ctx.lastWeekIndex.get(g.id);
-      if (last !== undefined && last === ctx.weekIndex - 1) {
-        return false;
-      }
-    }
-    return true;
-  });
+function preferredGenders(
+  recipient: Person,
+  rules: ScheduleRules
+): Array<"M" | "F"> {
+  if (recipient.isCouple && rules.malePairsForCoupleRecipients) {
+    return ["M", "F"];
+  }
+  return recipient.gender === "F" ? ["F", "M"] : ["M", "F"];
 }
 
+function workedPreviousWeek(
+  id: string,
+  ctx: AvailabilityCtx
+): boolean {
+  const last = ctx.lastWeekIndex.get(id);
+  return last !== undefined && last === ctx.weekIndex - 1;
+}
+
+/**
+ * Strategia coppie:
+ * 1) stesso sesso + pausa di una settimana
+ * 2) stesso sesso + reinserisci dalla settimana precedente (mai misti)
+ * Non lasciare la settimana vuota se esistono almeno 2 giovani dello stesso sesso liberi.
+ */
 function pickPair(
   giovani: Person[],
   recipient: Person,
   rules: ScheduleRules,
-  load: Map<string, number>,
+  loads: LoadMaps,
   ctx: AvailabilityCtx
-): { ids: string[]; relaxedGap: boolean } | null {
-  const baseEligible = giovani.filter((g) =>
-    canPairWith(g, recipient, rules)
-  );
+): { ids: string[]; reusedFromPreviousWeek: string[] } | null {
+  const baseEligible = giovani
+    .filter((g) => canPairWith(g, recipient, rules))
+    .filter((g) => !(rules.noDoubleDutySameWeek && ctx.busyThisWeek.has(g.id)));
 
-  // Prima prova con pausa di una settimana; se non basta, rilassa solo quel vincolo
-  for (const enforceGap of [true, false] as const) {
-    if (enforceGap && !rules.skipConsecutiveWeeks) continue;
+  if (!rules.sameGenderPairs) {
+    return pickPairAllowMixed(baseEligible, rules, loads, ctx);
+  }
 
-    const eligible = filterAvailable(baseEligible, rules, ctx, enforceGap);
-    if (eligible.length < rules.visitPairSize) continue;
+  const genders = preferredGenders(recipient, rules);
 
-    const pair = selectPairFromEligible(eligible, recipient, rules, load);
-    if (pair) {
-      return {
-        ids: pair,
-        relaxedGap: rules.skipConsecutiveWeeks && !enforceGap,
-      };
+  // Passata 1: preferisci chi ha saltato la settimana precedente
+  for (const gender of genders) {
+    const rested = baseEligible.filter(
+      (g) =>
+        g.gender === gender &&
+        !(rules.skipConsecutiveWeeks && workedPreviousWeek(g.id, ctx))
+    );
+    if (rested.length >= 2) {
+      const ids = pickTwo(rested, loads, rules);
+      if (ids) return { ids, reusedFromPreviousWeek: [] };
     }
   }
+
+  // Passata 2: completa con qualcuno della settimana precedente (stesso sesso)
+  for (const gender of genders) {
+    const sameGender = baseEligible.filter((g) => g.gender === gender);
+    if (sameGender.length < 2) continue;
+
+    const rested = sameGender.filter(
+      (g) => !(rules.skipConsecutiveWeeks && workedPreviousWeek(g.id, ctx))
+    );
+    const fromPrev = sameGender.filter((g) => workedPreviousWeek(g.id, ctx));
+
+    // Caso tipico: 1 riposato + 1 (o più) della settimana scorsa
+    if (rested.length >= 1 && fromPrev.length >= 1) {
+      const a = pickOne(rested, loads, rules);
+      const bPool = fromPrev.filter((g) => g.id !== a);
+      // Tra chi ripescare, preferisci chi ha meno turni
+      const b = pickOne(bPool, loads, rules);
+      if (a && b) {
+        return { ids: [a, b], reusedFromPreviousWeek: [b] };
+      }
+    }
+
+    // Entrambi dalla settimana scorsa se necessario (non lasciare vuoto)
+    if (fromPrev.length >= 2) {
+      const ids = pickTwo(fromPrev, loads, rules);
+      if (ids) {
+        return { ids, reusedFromPreviousWeek: [...ids] };
+      }
+    }
+
+    // Ultimo ripiego stesso sesso: chiunque libero di quel genere
+    const ids = pickTwo(sameGender, loads, rules);
+    if (ids) {
+      const reused = ids.filter((id) => workedPreviousWeek(id, ctx));
+      return { ids, reusedFromPreviousWeek: reused };
+    }
+  }
+
   return null;
 }
 
-function selectPairFromEligible(
-  eligible: Person[],
-  recipient: Person,
+function pickPairAllowMixed(
+  baseEligible: Person[],
   rules: ScheduleRules,
-  load: Map<string, number>
-): string[] | null {
-  // Coppie miste solo se la regola sameGenderPairs è disattivata
-  if (!rules.sameGenderPairs) {
-    if (eligible.length < 2) return null;
-    return pickTwo(eligible, load, rules);
+  loads: LoadMaps,
+  ctx: AvailabilityCtx
+): { ids: string[]; reusedFromPreviousWeek: string[] } | null {
+  const rested = baseEligible.filter(
+    (g) => !(rules.skipConsecutiveWeeks && workedPreviousWeek(g.id, ctx))
+  );
+  if (rested.length >= 2) {
+    const ids = pickTwo(rested, loads, rules);
+    if (ids) return { ids, reusedFromPreviousWeek: [] };
   }
-
-  // Stesso sesso: prova prima il genere "preferito", poi l'altro — mai misti
-  const genders: Array<"M" | "F"> =
-    recipient.isCouple && rules.malePairsForCoupleRecipients
-      ? ["M", "F"]
-      : recipient.gender === "F"
-        ? ["F", "M"]
-        : ["M", "F"];
-
-  for (const gender of genders) {
-    const pool = eligible.filter((g) => g.gender === gender);
-    if (pool.length < 2) continue;
-    return pickTwo(pool, load, rules);
+  if (baseEligible.length >= 2) {
+    const ids = pickTwo(baseEligible, loads, rules);
+    if (ids) {
+      return {
+        ids,
+        reusedFromPreviousWeek: ids.filter((id) =>
+          workedPreviousWeek(id, ctx)
+        ),
+      };
+    }
   }
-
   return null;
 }
 
 function pickTwo(
   pool: Person[],
-  load: Map<string, number>,
+  loads: LoadMaps,
   rules: ScheduleRules
 ): string[] | null {
   if (pool.length < 2) return null;
-  const ranked = rankPool(
-    pool,
-    load,
-    rules.randomizeYouth,
-    rules.balanceWorkload
-  );
-  if (rules.randomizeYouth && rules.balanceWorkload) {
-    const minLoad = load.get(ranked[0].id) ?? 0;
-    const band = ranked.filter((p) => (load.get(p.id) ?? 0) <= minLoad + 1);
-    if (band.length >= 2) {
-      const picked = shuffle(band).slice(0, 2);
-      return [picked[0].id, picked[1].id];
-    }
-  }
-  return [ranked[0].id, ranked[1].id];
+
+  // Prendi il primo dal carico più basso, poi il secondo dal carico più basso rimanente
+  const firstBand = lowestLoadBand(pool, loads, rules);
+  const first = firstBand[0];
+  if (!first) return null;
+
+  const remaining = pool.filter((p) => p.id !== first.id);
+  const secondBand = lowestLoadBand(remaining, loads, rules);
+  const second = secondBand[0];
+  if (!second) return null;
+
+  return [first.id, second.id];
 }
 
+function pickOne(
+  pool: Person[],
+  loads: LoadMaps,
+  rules: ScheduleRules
+): string | null {
+  if (!pool.length) return null;
+  const band = lowestLoadBand(pool, loads, rules);
+  return band[0]?.id ?? null;
+}
+
+/**
+ * Contatti: preferisci chi ha pausato; se non c'è nessuno, reinserisci
+ * dalla settimana precedente. Mai due incarichi nella stessa settimana.
+ */
 function pickSolo(
   giovani: Person[],
   recipient: Person,
   rules: ScheduleRules,
-  load: Map<string, number>,
+  loads: LoadMaps,
   ctx: AvailabilityCtx
-): { id: string; relaxedGap: boolean } | null {
-  const baseEligible = giovani.filter((g) =>
-    canPairWith(g, recipient, rules)
+): { id: string; reusedFromPreviousWeek: boolean } | null {
+  const baseEligible = giovani
+    .filter((g) => canPairWith(g, recipient, rules))
+    .filter((g) => !(rules.noDoubleDutySameWeek && ctx.busyThisWeek.has(g.id)));
+
+  const fallbackPool = baseEligible.length
+    ? baseEligible
+    : giovani.filter(
+        (g) => !(rules.noDoubleDutySameWeek && ctx.busyThisWeek.has(g.id))
+      );
+
+  if (!fallbackPool.length) return null;
+
+  const rested = fallbackPool.filter(
+    (g) => !(rules.skipConsecutiveWeeks && workedPreviousWeek(g.id, ctx))
   );
-
-  for (const enforceGap of [true, false] as const) {
-    if (enforceGap && !rules.skipConsecutiveWeeks) continue;
-
-    let pool = filterAvailable(baseEligible, rules, ctx, enforceGap);
-    // Se nessuno rispetta le regole di genere, ripiega su chi è solo libero
-    if (!pool.length) {
-      pool = filterAvailable(giovani, rules, ctx, enforceGap);
-    }
-    if (!pool.length) continue;
-
-    const ranked = rankPool(
-      pool,
-      load,
-      rules.randomizeYouth,
-      rules.balanceWorkload
-    );
-
-    let id: string | undefined;
-    if (rules.randomizeYouth && rules.balanceWorkload) {
-      const minLoad = load.get(ranked[0].id) ?? 0;
-      const band = ranked.filter((p) => (load.get(p.id) ?? 0) <= minLoad + 1);
-      id = shuffle(band)[0]?.id ?? ranked[0].id;
-    } else {
-      id = ranked[0]?.id;
-    }
-
-    if (id) {
-      return {
-        id,
-        relaxedGap: rules.skipConsecutiveWeeks && !enforceGap,
-      };
-    }
+  if (rested.length) {
+    const id = pickOne(rested, loads, rules);
+    if (id) return { id, reusedFromPreviousWeek: false };
   }
-  return null;
+
+  // Reinserisci dalla settimana precedente piuttosto che lasciare vuoto
+  const fromPrev = fallbackPool.filter((g) => workedPreviousWeek(g.id, ctx));
+  if (fromPrev.length) {
+    const id = pickOne(fromPrev, loads, rules);
+    if (id) return { id, reusedFromPreviousWeek: true };
+  }
+
+  const id = pickOne(fallbackPool, loads, rules);
+  if (!id) return null;
+  return {
+    id,
+    reusedFromPreviousWeek: workedPreviousWeek(id, ctx),
+  };
 }
 
 function canPairWith(
