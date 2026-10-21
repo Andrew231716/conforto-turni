@@ -145,7 +145,9 @@ export function generateProgramAssignments(
 
       if (!pairResult) {
         warnings.push(
-          `Settimana ${week.label}: impossibile formare una coppia valida per ${recipient.name} (${visitType}).`
+          rules.sameGenderPairs
+            ? `Settimana ${week.label}: impossibile formare una coppia dello stesso sesso per ${recipient.name} (${visitType}).`
+            : `Settimana ${week.label}: impossibile formare una coppia valida per ${recipient.name} (${visitType}).`
         );
       } else {
         if (pairResult.relaxedGap) {
@@ -360,6 +362,13 @@ function selectPairFromEligible(
   rules: ScheduleRules,
   load: Map<string, number>
 ): string[] | null {
+  // Coppie miste solo se la regola sameGenderPairs è disattivata
+  if (!rules.sameGenderPairs) {
+    if (eligible.length < 2) return null;
+    return pickTwo(eligible, load, rules);
+  }
+
+  // Stesso sesso: prova prima il genere "preferito", poi l'altro — mai misti
   const genders: Array<"M" | "F"> =
     recipient.isCouple && rules.malePairsForCoupleRecipients
       ? ["M", "F"]
@@ -368,49 +377,35 @@ function selectPairFromEligible(
         : ["M", "F"];
 
   for (const gender of genders) {
-    const pool = rules.sameGenderPairs
-      ? eligible.filter((g) => g.gender === gender)
-      : eligible;
+    const pool = eligible.filter((g) => g.gender === gender);
     if (pool.length < 2) continue;
-
-    const ranked = rankPool(
-      pool,
-      load,
-      rules.randomizeYouth,
-      rules.balanceWorkload
-    );
-
-    if (rules.sameGenderPairs) {
-      if (rules.randomizeYouth && rules.balanceWorkload) {
-        const minLoad = load.get(ranked[0].id) ?? 0;
-        const band = ranked.filter(
-          (p) => (load.get(p.id) ?? 0) <= minLoad + 1
-        );
-        const picked = shuffle(band).slice(0, 2);
-        if (picked.length >= 2) return [picked[0].id, picked[1].id];
-      }
-      return [ranked[0].id, ranked[1].id];
-    }
+    return pickTwo(pool, load, rules);
   }
 
-  if (!rules.sameGenderPairs && eligible.length >= 2) {
-    const ranked = rankPool(
-      eligible,
-      load,
-      rules.randomizeYouth,
-      rules.balanceWorkload
-    );
-    return [ranked[0].id, ranked[1].id];
-  }
+  return null;
+}
 
+function pickTwo(
+  pool: Person[],
+  load: Map<string, number>,
+  rules: ScheduleRules
+): string[] | null {
+  if (pool.length < 2) return null;
   const ranked = rankPool(
-    eligible,
+    pool,
     load,
     rules.randomizeYouth,
     rules.balanceWorkload
   );
-  if (ranked.length >= 2) return [ranked[0].id, ranked[1].id];
-  return null;
+  if (rules.randomizeYouth && rules.balanceWorkload) {
+    const minLoad = load.get(ranked[0].id) ?? 0;
+    const band = ranked.filter((p) => (load.get(p.id) ?? 0) <= minLoad + 1);
+    if (band.length >= 2) {
+      const picked = shuffle(band).slice(0, 2);
+      return [picked[0].id, picked[1].id];
+    }
+  }
+  return [ranked[0].id, ranked[1].id];
 }
 
 function pickSolo(

@@ -223,7 +223,7 @@ export default function GeneraPage() {
         <Rule
           checked={rules.sameGenderPairs}
           onChange={(v) => setRules({ ...rules, sameGenderPairs: v })}
-          label="Le coppie di incaricati sono stesso sesso (uomini+uomini / donne+donne)"
+          label="Le coppie di incaricati sono sempre stesso sesso (uomini+uomini / donne+donne) — mai misti"
         />
         <Rule
           checked={rules.malePairsForCoupleRecipients}
