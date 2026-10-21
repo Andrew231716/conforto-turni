@@ -53,9 +53,11 @@ export function PdfPreviewModal({
 
         <div className="space-y-8 p-4 sm:p-6">
           <header className="text-center">
-            <h3 className="font-display text-2xl">{program.title}</h3>
-            <p className="mt-1 text-[var(--muted)]">{program.monthsLabel}</p>
-            <p className="mx-auto mt-2 max-w-3xl text-xs text-[var(--muted)]">
+            <h3 className="font-display text-3xl">{program.title}</h3>
+            <p className="mt-1 text-base text-[var(--muted)]">
+              {program.monthsLabel}
+            </p>
+            <p className="mx-auto mt-3 max-w-3xl text-sm leading-relaxed text-[var(--muted)]">
               Pulsante calendario: apre una pagina per aggiungere l&apos;evento
               al calendario personale (Apple, Google, Outlook o altro). L&apos;evento
               rimane presente per tutta la settimana indicata.
@@ -160,7 +162,7 @@ function PreviewTable({
         {title}
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[40rem] text-left text-sm">
+        <table className="w-full min-w-[40rem] text-left text-base">
           <thead>
             <tr
               className={
@@ -168,7 +170,7 @@ function PreviewTable({
               }
             >
               {headers.map((h) => (
-                <th key={h} className="px-3 py-2 font-semibold">
+                <th key={h} className="px-3 py-3 font-semibold">
                   {h}
                 </th>
               ))}
@@ -178,7 +180,7 @@ function PreviewTable({
             {rows.map((row, i) => (
               <tr key={i} className="border-t border-[var(--line)]">
                 {row.cells.map((cell, j) => (
-                  <td key={j} className="px-3 py-2 align-top">
+                  <td key={j} className="px-3 py-3 align-top leading-snug">
                     {j === 4 && row.url ? (
                       <a
                         href={row.url}
