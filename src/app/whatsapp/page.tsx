@@ -49,20 +49,20 @@ export default function WhatsAppPage() {
   const giovani = data.people.filter((p) => p.role === "giovane");
 
   return (
-    <div className="space-y-6">
-      <div>
+    <div className="w-full min-w-0 space-y-6">
+      <div className="min-w-0">
         <h1 className="font-display text-3xl">WhatsApp</h1>
-        <p className="mt-1 text-sm text-[var(--muted)]">
+        <p className="mt-1 text-sm text-[var(--muted)] break-words">
           Aggiungi i numeri in Persone, personalizza i messaggi e inviali con un
           clic. Segnaposto:{" "}
-          <code className="text-xs">
+          <code className="break-all text-xs">
             {"{{nome}} {{destinatario}} {{settimana}} {{tipo}} {{compagno}} {{link_calendario}}"}
           </code>
         </p>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <div className="panel space-y-3">
+      <div className="grid w-full min-w-0 gap-4 lg:grid-cols-2">
+        <div className="panel min-w-0 space-y-3">
           <h2 className="font-display text-lg">Modelli messaggio</h2>
           {(
             [
@@ -74,7 +74,7 @@ export default function WhatsAppPage() {
             <label key={key} className="grid gap-1">
               <span className="label">{label}</span>
               <textarea
-                className="input min-h-[110px] font-mono text-xs"
+                className="input min-h-[110px] break-words font-mono text-xs"
                 value={effective[key]}
                 onChange={(e) =>
                   setTemplates({
@@ -100,7 +100,7 @@ export default function WhatsAppPage() {
           </button>
         </div>
 
-        <div className="panel space-y-3">
+        <div className="panel min-w-0 space-y-3">
           <h2 className="font-display text-lg">Anteprima</h2>
           <label className="grid gap-1">
             <span className="label">Destinatario messaggio (giovane)</span>
@@ -118,86 +118,74 @@ export default function WhatsAppPage() {
               ))}
             </select>
           </label>
-          <pre className="whitespace-pre-wrap rounded-md bg-[var(--sand)] p-3 text-sm">
+          <pre className="max-w-full overflow-x-auto whitespace-pre-wrap break-words rounded-md bg-[var(--sand)] p-3 text-sm [overflow-wrap:anywhere]">
             {preview}
           </pre>
         </div>
       </div>
 
-      <div className="panel">
+      <div className="panel w-full min-w-0">
         <h2 className="font-display mb-3 text-lg">Invio rapido per giovane</h2>
-        <div className="table-wrap">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Giovane</th>
-                <th>Telefono</th>
-                <th>Turni nel programma</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {giovani.map((g) => {
-                const turns = [
-                  ...activeProgram.visits.filter((v) =>
-                    v.assigneeIds.includes(g.id)
-                  ),
-                  ...activeProgram.contacts.filter((v) =>
-                    v.assigneeIds.includes(g.id)
-                  ),
-                ];
-                const first = turns[0];
-                const week = first
-                  ? activeProgram.weeks.find((w) => w.id === first.weekId)
-                  : null;
-                let message = `Ciao ${g.name}!`;
-                if (first && week) {
-                  const payload = buildEventPayload(
-                    first,
-                    week,
-                    data.people
-                  );
-                  const link =
-                    typeof window !== "undefined"
-                      ? buildCalendarLinkUrl(
-                          payload,
-                          data.settings,
-                          window.location.origin
-                        )
-                      : "";
-                  message = buildAssignmentMessage(
-                    first.kind === "visita" ? "visita" : "contatto",
-                    activeProgram.whatsappTemplates,
-                    first,
-                    week,
-                    data.people,
-                    link,
-                    g.id
-                  );
-                }
-                return (
-                  <tr key={g.id}>
-                    <td className="font-medium">{g.name}</td>
-                    <td className="font-mono text-xs">{g.phone || "—"}</td>
-                    <td>{turns.length}</td>
-                    <td>
-                      <WhatsAppButton
-                        person={g}
-                        message={message}
-                        countryCode={data.settings.defaultCountryCode}
-                        label={
-                          first
-                            ? "Invia primo turno"
-                            : "Messaggio vuoto"
-                        }
-                      />
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <ul className="divide-y divide-[var(--line)] rounded-lg border border-[var(--line)]">
+          {giovani.map((g) => {
+            const turns = [
+              ...activeProgram.visits.filter((v) =>
+                v.assigneeIds.includes(g.id)
+              ),
+              ...activeProgram.contacts.filter((v) =>
+                v.assigneeIds.includes(g.id)
+              ),
+            ];
+            const first = turns[0];
+            const week = first
+              ? activeProgram.weeks.find((w) => w.id === first.weekId)
+              : null;
+            let message = `Ciao ${g.name}!`;
+            if (first && week) {
+              const payload = buildEventPayload(first, week, data.people);
+              const link =
+                typeof window !== "undefined"
+                  ? buildCalendarLinkUrl(
+                      payload,
+                      data.settings,
+                      window.location.origin
+                    )
+                  : "";
+              message = buildAssignmentMessage(
+                first.kind === "visita" ? "visita" : "contatto",
+                activeProgram.whatsappTemplates,
+                first,
+                week,
+                data.people,
+                link,
+                g.id
+              );
+            }
+            return (
+              <li
+                key={g.id}
+                className="flex flex-col gap-3 px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div className="min-w-0">
+                  <div className="font-medium">{g.name}</div>
+                  <div className="mt-0.5 text-xs text-[var(--muted)]">
+                    <span className="font-mono">{g.phone || "Nessun telefono"}</span>
+                    {" · "}
+                    {turns.length} turni
+                  </div>
+                </div>
+                <div className="shrink-0">
+                  <WhatsAppButton
+                    person={g}
+                    message={message}
+                    countryCode={data.settings.defaultCountryCode}
+                    label={first ? "Invia turno" : "Messaggio"}
+                  />
+                </div>
+              </li>
+            );
+          })}
+        </ul>
         <p className="mt-3 text-xs text-[var(--muted)]">
           Per ogni turno singolo usa i pulsanti WA nella pagina Programma: lì il
           messaggio include destinatario, settimana e link calendario di quel
