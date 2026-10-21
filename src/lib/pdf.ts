@@ -8,6 +8,18 @@ import {
 } from "./calendar";
 import { monthGroups } from "./schedule";
 
+const MARGIN_X = 14;
+const NOTE =
+  "Pulsante calendario: apre una pagina per aggiungere l'evento al calendario personale (Apple, Google, Outlook o altro). L'evento rimane presente per tutta la settimana indicata.";
+
+const COLS = {
+  0: { cellWidth: 48 },
+  1: { cellWidth: 58 },
+  2: { cellWidth: 52 },
+  3: { cellWidth: 48 },
+  4: { cellWidth: 52 },
+};
+
 export function downloadProgramPdf(
   program: Program,
   people: Person[],
@@ -16,38 +28,52 @@ export function downloadProgramPdf(
 ) {
   const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
   const pageWidth = doc.internal.pageSize.getWidth();
-
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(16);
-  doc.text(program.title, pageWidth / 2, 16, { align: "center" });
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(12);
-  doc.text(program.monthsLabel, pageWidth / 2, 24, { align: "center" });
-  doc.setFontSize(9);
-  doc.setTextColor(80);
-  doc.text(
-    "Pulsante calendario: apre una pagina per aggiungere l'evento al calendario personale (Apple, Google, Outlook o altro). L'evento rimane presente per tutta la settimana indicata.",
-    pageWidth / 2,
-    30,
-    { align: "center", maxWidth: pageWidth - 30 }
-  );
-  doc.setTextColor(0);
+  const contentWidth = pageWidth - MARGIN_X * 2;
 
   const groups = monthGroups(program.weeks);
-  let first = true;
 
-  for (const group of groups) {
-    if (!first) doc.addPage();
-    first = false;
+  groups.forEach((group, index) => {
+    if (index > 0) doc.addPage();
 
-    let y = 18;
+    let y: number;
+
+    if (index === 0) {
+      // Intestazione documento solo sulla prima pagina
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(16);
+      doc.setTextColor(28, 43, 42);
+      doc.text(program.title, pageWidth / 2, 14, { align: "center" });
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(11);
+      doc.setTextColor(90);
+      doc.text(program.monthsLabel, pageWidth / 2, 21, { align: "center" });
+
+      doc.setFontSize(8);
+      doc.setTextColor(100);
+      const noteLines = doc.splitTextToSize(NOTE, contentWidth);
+      doc.text(noteLines, pageWidth / 2, 27, {
+        align: "center",
+        lineHeightFactor: 1.25,
+      });
+      y = 27 + noteLines.length * 3.5 + 6;
+      doc.setTextColor(0);
+    } else {
+      y = 16;
+    }
+
+    // Titolo mese — stesso stile su tutte le pagine
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(14);
-    doc.text(group.label, 14, y);
-    y += 6;
+    doc.setFontSize(15);
+    doc.setTextColor(31, 111, 99);
+    doc.text(group.label, MARGIN_X, y);
+    y += 7;
 
-    doc.setFontSize(11);
-    doc.text("Visite a Casa o in Struttura (una visita a settimana)", 14, y);
+    // Visite
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.setTextColor(28, 43, 42);
+    doc.text("Visite a Casa o in Struttura (una visita a settimana)", MARGIN_X, y);
     y += 2;
 
     const visitRows = group.weeks.map((week) => {
@@ -57,17 +83,37 @@ export function downloadProgramPdf(
 
     autoTable(doc, {
       startY: y,
-      head: [["Data", "Giovani Incaricati", "Destinatario", "Tipo di Visita", "Calendario"]],
-      body: visitRows.map((r) => [r.data, r.incarichi, r.dest, r.tipo, "Aggiungi al calendario"]),
-      styles: { fontSize: 9, cellPadding: 2.5 },
-      headStyles: { fillColor: [30, 90, 120], textColor: 255 },
-      columnStyles: {
-        0: { cellWidth: 45 },
-        1: { cellWidth: 55 },
-        2: { cellWidth: 50 },
-        3: { cellWidth: 40 },
-        4: { cellWidth: 45 },
+      margin: { left: MARGIN_X, right: MARGIN_X },
+      tableWidth: contentWidth,
+      head: [
+        [
+          "Data",
+          "Giovani Incaricati",
+          "Destinatario",
+          "Tipo di Visita",
+          "Calendario",
+        ],
+      ],
+      body: visitRows.map((r) => [
+        r.data,
+        r.incarichi,
+        r.dest,
+        r.tipo,
+        "Aggiungi al calendario",
+      ]),
+      styles: {
+        fontSize: 8.5,
+        cellPadding: 2.2,
+        overflow: "linebreak",
+        valign: "middle",
       },
+      headStyles: {
+        fillColor: [30, 90, 120],
+        textColor: 255,
+        fontStyle: "bold",
+        fontSize: 8.5,
+      },
+      columnStyles: COLS,
       didDrawCell: (data) => {
         if (data.section !== "body" || data.column.index !== 4) return;
         const row = visitRows[data.row.index];
@@ -75,17 +121,17 @@ export function downloadProgramPdf(
         doc.link(data.cell.x, data.cell.y, data.cell.width, data.cell.height, {
           url: row.url,
         });
-        doc.setTextColor(20, 90, 180);
       },
     });
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    y = ((doc as any).lastAutoTable?.finalY ?? y) + 10;
+    y = ((doc as any).lastAutoTable?.finalY ?? y) + 8;
 
+    // Contatti
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(11);
-    doc.setTextColor(0);
-    doc.text("Contatti Alternativi", 14, y);
+    doc.setFontSize(10);
+    doc.setTextColor(28, 43, 42);
+    doc.text("Contatti Alternativi", MARGIN_X, y);
     y += 2;
 
     const contactRows = group.weeks.map((week) => {
@@ -95,6 +141,8 @@ export function downloadProgramPdf(
 
     autoTable(doc, {
       startY: y,
+      margin: { left: MARGIN_X, right: MARGIN_X },
+      tableWidth: contentWidth,
       head: [
         [
           "Data",
@@ -111,8 +159,19 @@ export function downloadProgramPdf(
         r.tipo,
         "Aggiungi al calendario",
       ]),
-      styles: { fontSize: 9, cellPadding: 2.5 },
-      headStyles: { fillColor: [70, 110, 90], textColor: 255 },
+      styles: {
+        fontSize: 8.5,
+        cellPadding: 2.2,
+        overflow: "linebreak",
+        valign: "middle",
+      },
+      headStyles: {
+        fillColor: [70, 110, 90],
+        textColor: 255,
+        fontStyle: "bold",
+        fontSize: 8.5,
+      },
+      columnStyles: COLS,
       didDrawCell: (data) => {
         if (data.section !== "body" || data.column.index !== 4) return;
         const row = contactRows[data.row.index];
@@ -122,7 +181,7 @@ export function downloadProgramPdf(
         });
       },
     });
-  }
+  });
 
   const filename = `programma_${program.monthsLabel.replace(/\s+/g, "_")}.pdf`;
   doc.save(filename);

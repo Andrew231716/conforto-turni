@@ -63,8 +63,13 @@ export function PdfPreviewModal({
           </header>
 
           {groups.map((group) => (
-            <section key={group.label} className="space-y-4">
-              <h4 className="font-display text-xl capitalize">{group.label}</h4>
+            <section
+              key={group.label}
+              className="space-y-4 border-t border-[var(--line)] pt-6 first:border-t-0 first:pt-0"
+            >
+              <h4 className="font-display text-2xl text-[var(--teal)]">
+                {group.label}
+              </h4>
 
               <PreviewTable
                 title="Visite a Casa o in Struttura (una visita a settimana)"
