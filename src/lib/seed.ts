@@ -1,6 +1,12 @@
 import { nanoid } from "nanoid";
-import type { AppData, Assignment, Person, Program, WeekSlot } from "./types";
-import { DEFAULT_RULES, DEFAULT_SETTINGS, DEFAULT_WHATSAPP } from "./types";
+import type { AppData, Assignment, Person, PersonDuties, Program, WeekSlot } from "./types";
+import {
+  DEFAULT_DUTIES_DESTINATARIO,
+  DEFAULT_DUTIES_GIOVANE,
+  DEFAULT_RULES,
+  DEFAULT_SETTINGS,
+  DEFAULT_WHATSAPP,
+} from "./types";
 
 function p(
   name: string,
@@ -8,48 +14,78 @@ function p(
   role: "giovane" | "destinatario",
   extra: Partial<Person> = {}
 ): Person {
+  const duties: PersonDuties =
+    extra.duties ??
+    (role === "giovane"
+      ? { ...DEFAULT_DUTIES_GIOVANE }
+      : { ...DEFAULT_DUTIES_DESTINATARIO });
+  const rest = { ...extra };
+  delete rest.duties;
   return {
     id: nanoid(10),
     name,
     gender,
     role,
     active: true,
-    ...extra,
+    ...rest,
+    duties,
   };
 }
 
 export function createSeedPeople(): Person[] {
   const giovani: Person[] = [
-    p("Andrea Petrelli", "M", "giovane"),
-    p("Andrea Pozzi", "M", "giovane"),
-    p("Maurizio Prota", "M", "giovane"),
-    p("Valeria Gandini", "F", "giovane"),
-    p("Ilaria Marras", "F", "giovane"),
-    p("Serena Prota", "F", "giovane"),
-    p("Alice Petrelli", "F", "giovane"),
-    p("Emma Battaglia", "F", "giovane"),
-    p("Francesca Calvio", "F", "giovane"),
+    p("Andrea Petrelli", "M", "giovane", {
+      duties: { visiteCasa: true, visiteStruttura: true, contatti: false },
+    }),
+    p("Andrea Pozzi", "M", "giovane", {
+      duties: { visiteCasa: true, visiteStruttura: true, contatti: false },
+    }),
+    p("Maurizio Prota", "M", "giovane", {
+      duties: { visiteCasa: true, visiteStruttura: true, contatti: true },
+    }),
+    p("Valeria Gandini", "F", "giovane", {
+      duties: { visiteCasa: true, visiteStruttura: true, contatti: false },
+    }),
+    p("Ilaria Marras", "F", "giovane", {
+      duties: { visiteCasa: true, visiteStruttura: true, contatti: false },
+    }),
+    p("Serena Prota", "F", "giovane", {
+      duties: { visiteCasa: true, visiteStruttura: true, contatti: true },
+    }),
+    p("Alice Petrelli", "F", "giovane", {
+      duties: { visiteCasa: false, visiteStruttura: false, contatti: true },
+    }),
+    p("Emma Battaglia", "F", "giovane", {
+      duties: { visiteCasa: false, visiteStruttura: false, contatti: true },
+    }),
+    p("Francesca Calvio", "F", "giovane", {
+      duties: { visiteCasa: false, visiteStruttura: false, contatti: true },
+    }),
   ];
 
-  const destinatari: Person[] = [
-    p("Lorenzo Russo", "M", "destinatario", { hospitalized: true }),
-    p("Monopoli Lucia", "F", "destinatario"),
-    p("Streparola Teresa", "F", "destinatario"),
-    p("Nesci Adelina", "F", "destinatario"),
-    p("De Rinaldis Ornella", "F", "destinatario"),
-    p("Coniugi Calabrese", "M", "destinatario", { isCouple: true }),
-    p("Germanò Angela", "F", "destinatario"),
-    p("De Lisi Anna Maria", "F", "destinatario"),
-    p("Leccardi Fiorella", "F", "destinatario"),
-    p("Angela Suzzani", "F", "destinatario", { hospitalized: true }),
-    p("Cristini Giuliana", "F", "destinatario"),
-    p("Lapenna Antonietta", "F", "destinatario"),
-    p("Bettera Carmen", "F", "destinatario"),
-    p("Vignola Rosanna", "F", "destinatario"),
-    p("Belivacqua Michelina", "F", "destinatario"),
-    p("La Gona Lina", "F", "destinatario"),
-    p("Battiato Stella", "F", "destinatario"),
+  const destNames: Array<[string, "M" | "F", Partial<Person>, number]> = [
+    ["Lorenzo Russo", "M", { hospitalized: true }, 1],
+    ["Monopoli Lucia", "F", {}, 2],
+    ["Streparola Teresa", "F", {}, 3],
+    ["Nesci Adelina", "F", {}, 4],
+    ["De Rinaldis Ornella", "F", {}, 5],
+    ["Coniugi Calabrese", "M", { isCouple: true }, 6],
+    ["Germanò Angela", "F", {}, 7],
+    ["De Lisi Anna Maria", "F", {}, 8],
+    ["Leccardi Fiorella", "F", {}, 9],
+    ["Angela Suzzani", "F", { hospitalized: true }, 10],
+    ["Cristini Giuliana", "F", {}, 11],
+    ["Lapenna Antonietta", "F", {}, 12],
+    ["Bettera Carmen", "F", {}, 13],
+    ["Vignola Rosanna", "F", {}, 14],
+    ["Belivacqua Michelina", "F", {}, 15],
+    ["La Gona Lina", "F", {}, 16],
+    ["Battiato Stella", "F", {}, 17],
   ];
+
+  const destinatari: Person[] = destNames.map(([name, gender, extra, order]) =>
+    p(name, gender, "destinatario", { ...extra, cycleOrder: order })
+  );
 
   return [...giovani, ...destinatari];
 }

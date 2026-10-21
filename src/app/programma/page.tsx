@@ -5,7 +5,7 @@ import { nanoid } from "nanoid";
 import { useStore } from "@/lib/store";
 import { CalendarMenu } from "@/components/CalendarMenu";
 import { WhatsAppButton } from "@/components/WhatsAppButton";
-import { downloadProgramPdf } from "@/lib/pdf";
+import { PdfPreviewModal } from "@/components/PdfPreview";
 import { monthGroups } from "@/lib/schedule";
 import {
   buildCalendarLinkUrl,
@@ -28,6 +28,7 @@ export default function ProgrammaPage() {
     list: "visits" | "contacts";
     assignment: Assignment;
   } | null>(null);
+  const [pdfPreview, setPdfPreview] = useState(false);
 
   const groups = useMemo(
     () => (activeProgram ? monthGroups(activeProgram.weeks) : []),
@@ -69,19 +70,21 @@ export default function ProgrammaPage() {
           <button
             type="button"
             className="btn-primary"
-            onClick={() =>
-              downloadProgramPdf(
-                activeProgram,
-                data.people,
-                data.settings,
-                window.location.origin
-              )
-            }
+            onClick={() => setPdfPreview(true)}
           >
-            Scarica PDF
+            Anteprima / PDF
           </button>
         </div>
       </div>
+
+      {pdfPreview && (
+        <PdfPreviewModal
+          program={activeProgram}
+          people={data.people}
+          settings={data.settings}
+          onClose={() => setPdfPreview(false)}
+        />
+      )}
 
       {editing && (
         <AssignmentEditor

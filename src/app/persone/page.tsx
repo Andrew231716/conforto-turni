@@ -98,6 +98,7 @@ export default function PersonePage() {
               <th>Ruolo</th>
               <th>Genere</th>
               <th>Telefono</th>
+              <th>Incarichi / riceve</th>
               <th>Flag</th>
               <th></th>
             </tr>
@@ -109,6 +110,18 @@ export default function PersonePage() {
                 <td>{p.role === "giovane" ? "Giovane" : "Destinatario"}</td>
                 <td>{p.gender}</td>
                 <td className="font-mono text-xs">{p.phone || "—"}</td>
+                <td className="text-xs text-[var(--muted)]">
+                  {[
+                    p.duties?.visiteCasa && "casa",
+                    p.duties?.visiteStruttura && "struttura",
+                    p.duties?.contatti && "contatti",
+                    p.role === "destinatario" &&
+                      p.cycleOrder != null &&
+                      `#${p.cycleOrder}`,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ") || "—"}
+                </td>
                 <td className="text-xs text-[var(--muted)]">
                   {[
                     p.hospitalized && "ricoverato/a",

@@ -1,30 +1,72 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useStore } from "@/lib/store";
 import { DEFAULT_RULES, type ScheduleRules } from "@/lib/types";
+import {
+  describeCycleStart,
+  sortDestinatari,
+} from "@/lib/schedule";
 
 export default function GeneraPage() {
-  const { ready, data, createProgramFromGenerator, regenerateAssignments, activeProgram } =
-    useStore();
+  const {
+    ready,
+    data,
+    createProgramFromGenerator,
+    regenerateAssignments,
+    activeProgram,
+  } = useStore();
   const router = useRouter();
   const [title, setTitle] = useState("Programma di Visite e Incoraggiamento");
-  const [monthsLabel, setMonthsLabel] = useState("Dicembre 2026 - Febbraio 2027");
+  const [monthsLabel, setMonthsLabel] = useState(
+    "Dicembre 2026 - Febbraio 2027"
+  );
   const [startDate, setStartDate] = useState("2026-11-30");
   const [weekCount, setWeekCount] = useState(13);
   const [rules, setRules] = useState<ScheduleRules>({ ...DEFAULT_RULES });
   const [warnings, setWarnings] = useState<string[]>([]);
+  const [previousProgramId, setPreviousProgramId] = useState<string>("");
+
+  const giovani = useMemo(
+    () => data.people.filter((p) => p.role === "giovane" && p.active),
+    [data.people]
+  );
+  const destinatari = useMemo(
+    () =>
+      sortDestinatari(
+        data.people.filter((p) => p.role === "destinatario" && p.active)
+      ),
+    [data.people]
+  );
+
+  const previousProgram =
+    data.programs.find((p) => p.id === previousProgramId) ??
+    activeProgram ??
+    null;
+
+  const visitStart = describeCycleStart(
+    destinatari.filter(
+      (d) => d.duties?.visiteCasa || d.duties?.visiteStruttura
+    ),
+    previousProgram?.visits,
+    rules.continueRecipientCycle
+  );
+  const contactStart = describeCycleStart(
+    destinatari.filter((d) => d.duties?.contatti),
+    previousProgram?.contacts,
+    rules.continueRecipientCycle
+  );
 
   if (!ready) return <p>Caricamento…</p>;
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6">
+    <div className="mx-auto max-w-3xl space-y-6">
       <div>
         <h1 className="font-display text-3xl">Genera programma</h1>
         <p className="mt-1 text-sm text-[var(--muted)]">
-          Crea un nuovo trimestre con le regole di abbinamento che scegli tu.
-          Potrai sempre modificare i turni a mano dopo.
+          Usa gli incarichi definiti in Persone, continua il ciclo dei
+          destinatari e abbina i giovani a caso rispettando le regole.
         </p>
       </div>
 
@@ -70,7 +112,92 @@ export default function GeneraPage() {
       </div>
 
       <div className="panel space-y-3">
+        <h2 className="font-display text-xl">Chi fa cosa (da Persone)</h2>
+        <p className="text-sm text-[var(--muted)]">
+          Modifica queste preferenze nella scheda di ogni persona. Qui vedi solo
+          il riepilogo usato dal generatore.
+        </p>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <DutySummary
+            title="Visite a casa"
+            names={giovani
+              .filter((g) => g.duties?.visiteCasa)
+              .map((g) => g.name)}
+          />
+          <DutySummary
+            title="Visite in struttura"
+            names={giovani
+              .filter((g) => g.duties?.visiteStruttura)
+              .map((g) => g.name)}
+          />
+          <DutySummary
+            title="Contatti alternativi"
+            names={giovani
+              .filter((g) => g.duties?.contatti)
+              .map((g) => g.name)}
+          />
+        </div>
+      </div>
+
+      <div className="panel space-y-3">
+        <h2 className="font-display text-xl">Ciclo destinatari</h2>
+        <Rule
+          checked={rules.continueRecipientCycle}
+          onChange={(v) => setRules({ ...rules, continueRecipientCycle: v })}
+          label="Continua dal primo destinatario non ancora visitato / sentito nel programma di riferimento"
+        />
+        <label className="grid gap-1">
+          <span className="label">Programma di riferimento (ciclo precedente)</span>
+          <select
+            className="input"
+            value={previousProgramId || activeProgram?.id || ""}
+            onChange={(e) => setPreviousProgramId(e.target.value)}
+          >
+            {data.programs.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.monthsLabel}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="rounded-md bg-[var(--teal-soft)] px-3 py-2 text-sm">
+          <div>
+            Prossima visita partirà da: <strong>{visitStart}</strong>
+          </div>
+          <div>
+            Prossimo contatto partirà da: <strong>{contactStart}</strong>
+          </div>
+        </div>
+        <details className="text-sm">
+          <summary className="cursor-pointer font-medium">
+            Ordine destinatari (cycleOrder)
+          </summary>
+          <ol className="mt-2 list-decimal space-y-1 pl-5 text-[var(--muted)]">
+            {destinatari.map((d) => (
+              <li key={d.id}>
+                {d.name}
+                {d.cycleOrder != null ? ` (#${d.cycleOrder})` : ""}
+                {" — "}
+                {[
+                  (d.duties?.visiteCasa || d.duties?.visiteStruttura) &&
+                    "visite",
+                  d.duties?.contatti && "contatti",
+                ]
+                  .filter(Boolean)
+                  .join(", ") || "nessun tipo"}
+              </li>
+            ))}
+          </ol>
+        </details>
+      </div>
+
+      <div className="panel space-y-3">
         <h2 className="font-display text-xl">Regole di abbinamento</h2>
+        <Rule
+          checked={rules.randomizeYouth}
+          onChange={(v) => setRules({ ...rules, randomizeYouth: v })}
+          label="Combina i giovani in modo casuale (sempre rispettando le regole sotto)"
+        />
         <Rule
           checked={rules.femaleYouthOnlyVisitFemales}
           onChange={(v) =>
@@ -113,6 +240,8 @@ export default function GeneraPage() {
               startDate,
               weekCount,
               rules,
+              previousProgramId:
+                previousProgramId || activeProgram?.id || null,
             });
             setWarnings(w);
             router.push("/programma");
@@ -125,7 +254,12 @@ export default function GeneraPage() {
             type="button"
             className="btn-ghost"
             onClick={() => {
-              const w = regenerateAssignments(activeProgram.id, rules);
+              const w = regenerateAssignments(activeProgram.id, rules, {
+                previousProgramId:
+                  previousProgramId ||
+                  data.programs.find((p) => p.id !== activeProgram.id)?.id ||
+                  null,
+              });
               setWarnings(w);
               alert(
                 w.length
@@ -150,14 +284,19 @@ export default function GeneraPage() {
           </ul>
         </div>
       )}
+    </div>
+  );
+}
 
-      <p className="text-xs text-[var(--muted)]">
-        Persone attive usate:{" "}
-        {data.people.filter((p) => p.active && p.role === "giovane").length}{" "}
-        giovani,{" "}
-        {data.people.filter((p) => p.active && p.role === "destinatario").length}{" "}
-        destinatari.
-      </p>
+function DutySummary({ title, names }: { title: string; names: string[] }) {
+  return (
+    <div className="rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3">
+      <div className="text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">
+        {title}
+      </div>
+      <div className="mt-1 text-sm">
+        {names.length ? names.join(", ") : "Nessuno"}
+      </div>
     </div>
   );
 }

@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useStore } from "@/lib/store";
-import { downloadProgramPdf } from "@/lib/pdf";
+import { PdfPreviewModal } from "@/components/PdfPreview";
 import { parseISO, isWithinInterval, addDays } from "date-fns";
 
 export default function HomePage() {
   const { ready, data, activeProgram } = useStore();
+  const [pdfPreview, setPdfPreview] = useState(false);
 
   const thisWeek = useMemo(() => {
     if (!activeProgram) return null;
@@ -69,20 +70,22 @@ export default function HomePage() {
             <button
               type="button"
               className="btn-ghost"
-              onClick={() =>
-                downloadProgramPdf(
-                  activeProgram,
-                  data.people,
-                  data.settings,
-                  window.location.origin
-                )
-              }
+              onClick={() => setPdfPreview(true)}
             >
-              Scarica PDF
+              Anteprima / PDF
             </button>
           )}
         </div>
       </section>
+
+      {pdfPreview && activeProgram && (
+        <PdfPreviewModal
+          program={activeProgram}
+          people={data.people}
+          settings={data.settings}
+          onClose={() => setPdfPreview(false)}
+        />
+      )}
 
       <section className="grid gap-4 sm:grid-cols-3">
         <Stat label="Giovani" value={String(giovani.length)} href="/persone" />

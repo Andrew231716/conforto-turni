@@ -3,6 +3,15 @@ export type PersonRole = "giovane" | "destinatario";
 export type VisitKind = "Visita a casa" | "Visita in struttura";
 export type ContactKind = "Telefonata/Messaggio/Conversazione in sala";
 
+export interface PersonDuties {
+  /** Può essere incaricato di visite a casa */
+  visiteCasa: boolean;
+  /** Può essere incaricato di visite in struttura */
+  visiteStruttura: boolean;
+  /** Può fare contatti alternativi */
+  contatti: boolean;
+}
+
 export interface Person {
   id: string;
   name: string;
@@ -15,6 +24,13 @@ export interface Person {
   /** Es. Coniugi Calabrese */
   isCouple?: boolean;
   active: boolean;
+  /**
+   * Per i giovani: quali tipi di incarico può svolgere.
+   * Per i destinatari: se riceve visite casa/struttura e/o contatti.
+   */
+  duties: PersonDuties;
+  /** Ordine nel ciclo destinatari (più basso = prima). Solo destinatari. */
+  cycleOrder?: number;
 }
 
 export interface ScheduleRules {
@@ -28,6 +44,10 @@ export interface ScheduleRules {
   malePairsForCoupleRecipients: boolean;
   visitPairSize: 2;
   balanceWorkload: boolean;
+  /** Combina i giovani in modo casuale (rispettando le regole) */
+  randomizeYouth: boolean;
+  /** Continua il ciclo destinatari dal primo non ancora visitato/sentito */
+  continueRecipientCycle: boolean;
 }
 
 export interface WeekSlot {
@@ -82,6 +102,18 @@ export interface AppData {
   settings: AppSettings;
 }
 
+export const DEFAULT_DUTIES_GIOVANE: PersonDuties = {
+  visiteCasa: true,
+  visiteStruttura: true,
+  contatti: true,
+};
+
+export const DEFAULT_DUTIES_DESTINATARIO: PersonDuties = {
+  visiteCasa: true,
+  visiteStruttura: true,
+  contatti: true,
+};
+
 export const DEFAULT_RULES: ScheduleRules = {
   femaleYouthOnlyVisitFemales: true,
   maleYouthOnlyVisitMales: false,
@@ -89,6 +121,8 @@ export const DEFAULT_RULES: ScheduleRules = {
   malePairsForCoupleRecipients: true,
   visitPairSize: 2,
   balanceWorkload: true,
+  randomizeYouth: true,
+  continueRecipientCycle: true,
 };
 
 export const DEFAULT_WHATSAPP: WhatsAppTemplates = {
@@ -106,3 +140,31 @@ export const DEFAULT_SETTINGS: AppSettings = {
   calendarlinkCollectionId: "3b8e59b7-0bcf-4e38-a8cc-a42d5a555cc4",
   defaultCountryCode: "39",
 };
+
+/** Normalizza persone importate/vecchie senza duties */
+export function normalizePerson(p: Person): Person {
+  const defaults =
+    p.role === "giovane" ? DEFAULT_DUTIES_GIOVANE : DEFAULT_DUTIES_DESTINATARIO;
+  return {
+    ...p,
+    duties: {
+      visiteCasa: p.duties?.visiteCasa ?? defaults.visiteCasa,
+      visiteStruttura: p.duties?.visiteStruttura ?? defaults.visiteStruttura,
+      contatti: p.duties?.contatti ?? defaults.contatti,
+    },
+  };
+}
+
+export function normalizeAppData(data: AppData): AppData {
+  return {
+    ...data,
+    people: data.people.map(normalizePerson),
+    programs: data.programs.map((prog) => ({
+      ...prog,
+      rules: {
+        ...DEFAULT_RULES,
+        ...prog.rules,
+      },
+    })),
+  };
+}

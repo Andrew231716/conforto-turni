@@ -19,7 +19,7 @@ import type {
   ScheduleRules,
   WhatsAppTemplates,
 } from "./types";
-import { DEFAULT_RULES, DEFAULT_WHATSAPP } from "./types";
+import { DEFAULT_RULES, DEFAULT_WHATSAPP, normalizePerson } from "./types";
 import {
   exportAppDataJson,
   importAppDataJson,
@@ -56,10 +56,16 @@ interface StoreValue {
     rules: ScheduleRules;
     visitRecipientIds?: string[];
     contactRecipientIds?: string[];
+    previousProgramId?: string | null;
   }) => { program: Program; warnings: string[] };
   regenerateAssignments: (
     programId: string,
-    rules?: ScheduleRules
+    rules?: ScheduleRules,
+    extra?: {
+      visitRecipientIds?: string[];
+      contactRecipientIds?: string[];
+      previousProgramId?: string | null;
+    }
   ) => string[];
   updateWhatsAppTemplates: (
     programId: string,
@@ -116,10 +122,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         persist({ ...d, settings: { ...d.settings, ...s } });
       },
       upsertPerson: (person) => {
-        const exists = d.people.some((p) => p.id === person.id);
+        const normalized = normalizePerson(person);
+        const exists = d.people.some((p) => p.id === normalized.id);
         const people = exists
-          ? d.people.map((p) => (p.id === person.id ? person : p))
-          : [...d.people, person];
+          ? d.people.map((p) => (p.id === normalized.id ? normalized : p))
+          : [...d.people, normalized];
         persist({ ...d, people });
       },
       deletePerson: (id) => {
@@ -169,12 +176,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       },
       createProgramFromGenerator: (opts) => {
         const weeks = generateWeeks(opts.startDate, opts.weekCount);
+        const previousProgram =
+          (opts.previousProgramId
+            ? d.programs.find((p) => p.id === opts.previousProgramId)
+            : d.programs.find((p) => p.id === d.activeProgramId)) ?? null;
         const { visits, contacts, warnings } = generateProgramAssignments({
           weeks,
           people: d.people,
           rules: opts.rules,
           visitRecipientIds: opts.visitRecipientIds,
           contactRecipientIds: opts.contactRecipientIds,
+          previousProgram,
         });
         const now = new Date().toISOString();
         const program: Program = {
@@ -196,14 +208,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         });
         return { program, warnings };
       },
-      regenerateAssignments: (programId, rules) => {
+      regenerateAssignments: (programId, rules, extra) => {
         const program = d.programs.find((p) => p.id === programId);
         if (!program) return ["Programma non trovato"];
         const usedRules = rules ?? program.rules ?? DEFAULT_RULES;
+        const previousProgram =
+          (extra?.previousProgramId
+            ? d.programs.find((p) => p.id === extra.previousProgramId)
+            : d.programs.filter((p) => p.id !== programId).at(-1)) ?? null;
         const { visits, contacts, warnings } = generateProgramAssignments({
           weeks: program.weeks,
           people: d.people,
           rules: usedRules,
+          visitRecipientIds: extra?.visitRecipientIds,
+          contactRecipientIds: extra?.contactRecipientIds,
+          previousProgram,
         });
         persist({
           ...d,

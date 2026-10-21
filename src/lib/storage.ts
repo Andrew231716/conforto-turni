@@ -1,4 +1,5 @@
 import type { AppData } from "./types";
+import { normalizeAppData } from "./types";
 import { createSeedData } from "./seed";
 
 const STORAGE_KEY = "conforto-turni-v1";
@@ -12,7 +13,7 @@ export function loadAppData(): AppData {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(seed));
       return seed;
     }
-    return JSON.parse(raw) as AppData;
+    return normalizeAppData(JSON.parse(raw) as AppData);
   } catch {
     return createSeedData();
   }
@@ -32,7 +33,7 @@ export function importAppDataJson(json: string): AppData {
   if (!parsed?.people || !parsed?.programs) {
     throw new Error("File non valido: mancano people/programs");
   }
-  return parsed;
+  return normalizeAppData(parsed);
 }
 
 export function resetToSeed(): AppData {
