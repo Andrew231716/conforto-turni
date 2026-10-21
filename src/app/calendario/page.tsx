@@ -63,7 +63,15 @@ function CalendarioInner() {
   return (
     <div className="flex min-h-screen flex-col items-center px-4 py-10">
       <div className="mb-8 flex flex-col items-center gap-2">
-        <span className="logo-mark scale-125" aria-hidden />
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/icon-192.png"
+          alt=""
+          width={56}
+          height={56}
+          className="h-14 w-14 rounded-2xl shadow-sm"
+          aria-hidden
+        />
         <span className="font-display text-lg">Conforto Turni</span>
       </div>
 

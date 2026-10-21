@@ -26,7 +26,15 @@ export function AppShell({ children }: { children: ReactNode }) {
       <header className="border-b border-[var(--line)] bg-[var(--surface)]/90 backdrop-blur sticky top-0 z-40">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3">
           <Link href="/" className="flex items-center gap-3">
-            <span className="logo-mark" aria-hidden />
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/icon-192.png"
+              alt=""
+              width={36}
+              height={36}
+              className="h-9 w-9 rounded-lg shadow-sm"
+              aria-hidden
+            />
             <div>
               <div className="font-display text-lg leading-tight tracking-tight text-[var(--ink)]">
                 Conforto Turni
