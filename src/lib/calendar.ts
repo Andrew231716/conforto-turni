@@ -41,8 +41,8 @@ export function buildEventPayload(
 
   return {
     title,
-    start: `${week.startDate} 00:00`,
-    duration: WEEK_MINUTES,
+    start: assignment.appointment?.replace("T", " ") || `${week.startDate} 00:00`,
+    duration: assignment.appointment ? 60 : WEEK_MINUTES,
     description,
     timezone: "Europe/Rome",
   };

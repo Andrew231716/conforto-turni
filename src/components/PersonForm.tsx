@@ -51,6 +51,10 @@ export function PersonForm({
       onSubmit={(e) => {
         e.preventDefault();
         if (!form.name.trim()) return;
+        if (form.unavailableFrom && form.unavailableUntil && form.unavailableFrom > form.unavailableUntil) {
+          alert("La fine dell’indisponibilità deve seguire l’inizio.");
+          return;
+        }
         onSave({ ...form, name: form.name.trim(), phone: form.phone?.trim() });
       }}
     >
@@ -115,6 +119,14 @@ export function PersonForm({
         />
       </label>
 
+      {form.role === "giovane" && <>
+        <label className="grid gap-1">Indisponibile dal
+          <input className="input" type="date" value={form.unavailableFrom || ""} onChange={(event) => setForm({ ...form, unavailableFrom: event.target.value })} />
+        </label>
+        <label className="grid gap-1">Indisponibile fino al
+          <input className="input" type="date" value={form.unavailableUntil || ""} onChange={(event) => setForm({ ...form, unavailableUntil: event.target.value })} />
+        </label>
+      </>}
       <fieldset className="sm:col-span-2 rounded-lg border border-[var(--line)] p-3">
         <legend className="label px-1">
           {form.role === "giovane"

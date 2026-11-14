@@ -25,6 +25,7 @@ export function WhatsAppButton({
       disabled={!hasPhone}
       title={hasPhone ? `Scrivi a ${person.name}` : "Manca il numero"}
       onClick={() => {
+        if (!window.confirm(`Messaggio per ${person.name}\n\n${message}\n\nAprire WhatsApp?`)) return;
         const res = openWhatsAppForPerson(person, message, countryCode);
         if (!res.ok) {
           alert(res.reason);

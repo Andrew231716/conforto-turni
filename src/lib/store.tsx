@@ -57,6 +57,7 @@ interface StoreValue {
     visitRecipientIds?: string[];
     contactRecipientIds?: string[];
     previousProgramId?: string | null;
+    preview?: boolean;
   }) => { program: Program; warnings: string[] };
   regenerateAssignments: (
     programId: string,
@@ -65,6 +66,8 @@ interface StoreValue {
       visitRecipientIds?: string[];
       contactRecipientIds?: string[];
       previousProgramId?: string | null;
+      onlyMissing?: boolean;
+      weekId?: string;
     }
   ) => string[];
   updateWhatsAppTemplates: (
@@ -201,7 +204,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           createdAt: now,
           updatedAt: now,
         };
-        persist({
+        if (!opts.preview) persist({
           ...d,
           programs: [...d.programs, program],
           activeProgramId: program.id,
@@ -224,6 +227,30 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           contactRecipientIds: extra?.contactRecipientIds,
           previousProgram,
         });
+        const existing = [...program.visits, ...program.contacts];
+        if (extra?.weekId && !extra.onlyMissing) {
+          const weekId = extra.weekId;
+          if ((program.visits.some((item) => item.weekId === weekId) && !visits.some((item) => item.weekId === weekId)) ||
+              (program.contacts.some((item) => item.weekId === weekId) && !contacts.some((item) => item.weekId === weekId))) {
+            return ["Settimana conservata: il generatore non ha trovato una sostituzione per tutti gli incarichi esistenti.", ...warnings];
+          }
+        }
+        const compatible = (assignment: Assignment) => !usedRules.noDoubleDutySameWeek ||
+          !existing.some((item) => item.weekId === assignment.weekId &&
+            item.assigneeIds.some((id) => assignment.assigneeIds.includes(id)));
+        const fill = (saved: Assignment[], proposed: Assignment[]) => [
+          ...saved,
+          ...proposed.filter((item) => !saved.some((current) => current.weekId === item.weekId) && compatible(item)),
+        ];
+        const apply = (saved: Assignment[], proposed: Assignment[]) => {
+          const weekId = extra?.weekId;
+          if (weekId) {
+            const selected = proposed.filter((item) => item.weekId === weekId);
+            return extra?.onlyMissing ? fill(saved, selected) :
+              selected.length ? [...saved.filter((item) => item.weekId !== weekId), ...selected] : saved;
+          }
+          return extra?.onlyMissing ? fill(saved, proposed) : proposed;
+        };
         persist({
           ...d,
           programs: d.programs.map((p) =>
@@ -231,8 +258,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               ? {
                   ...p,
                   rules: usedRules,
-                  visits,
-                  contacts,
+                  visits: apply(p.visits, visits),
+                  contacts: apply(p.contacts, contacts),
                   updatedAt: new Date().toISOString(),
                 }
               : p

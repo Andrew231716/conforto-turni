@@ -149,7 +149,7 @@ export function generateProgramAssignments(
           ? giovaniVisitaStruttura
           : giovaniVisitaCasa;
 
-      const pairResult = pickPair(pool, recipient, rules, loads, {
+      const pairResult = pickPair(pool.filter((person) => availableForWeek(person, week)), recipient, rules, loads, {
         weekIndex: wi,
         busyThisWeek,
         lastWeekIndex,
@@ -189,7 +189,7 @@ export function generateProgramAssignments(
       contactRecipients[wi % Math.max(contactRecipients.length, 1)];
     if (contactRecipient) {
       const soloResult = pickSolo(
-        giovaniContatto,
+        giovaniContatto.filter((person) => availableForWeek(person, week)),
         contactRecipient,
         rules,
         loads,
@@ -555,7 +555,15 @@ function pickSolo(
   };
 }
 
-function canPairWith(
+export function availableForWeek(person: Person, week: WeekSlot): boolean {
+  if (!person.unavailableFrom && !person.unavailableUntil) return true;
+  return Boolean(
+    (person.unavailableFrom && person.unavailableFrom > week.endDate) ||
+      (person.unavailableUntil && person.unavailableUntil < week.startDate)
+  );
+}
+
+export function canPairWith(
   giovane: Person,
   recipient: Person,
   rules: ScheduleRules

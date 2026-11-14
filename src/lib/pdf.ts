@@ -83,6 +83,7 @@ export function downloadProgramPdf(
     });
 
     autoTable(doc, {
+      rowPageBreak: "avoid",
       startY: y,
       margin: { left: MARGIN_X, right: MARGIN_X, bottom: 14 },
       tableWidth: contentWidth,
@@ -156,6 +157,7 @@ export function downloadProgramPdf(
     });
 
     autoTable(doc, {
+      rowPageBreak: "avoid",
       startY: y,
       margin: { left: MARGIN_X, right: MARGIN_X, bottom: 14 },
       tableWidth: contentWidth,

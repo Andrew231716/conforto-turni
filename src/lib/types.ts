@@ -13,6 +13,8 @@ export interface PersonDuties {
 }
 
 export interface Person {
+  unavailableFrom?: string;
+  unavailableUntil?: string;
   id: string;
   name: string;
   gender: Gender;
@@ -62,6 +64,8 @@ export interface WeekSlot {
 }
 
 export interface Assignment {
+  appointment?: string;
+  status?: "Da confermare" | "Confermato" | "Completato" | "Da riprogrammare";
   id: string;
   weekId: string;
   kind: "visita" | "contatto";

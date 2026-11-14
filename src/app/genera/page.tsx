@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useStore } from "@/lib/store";
-import { DEFAULT_RULES, type ScheduleRules } from "@/lib/types";
+import { DEFAULT_RULES, type Program, type ScheduleRules } from "@/lib/types";
 import {
   describeCycleStart,
   sortDestinatari,
@@ -16,6 +16,7 @@ export default function GeneraPage() {
     createProgramFromGenerator,
     regenerateAssignments,
     activeProgram,
+    importJson,
   } = useStore();
   const router = useRouter();
   const [title, setTitle] = useState("Programma di Visite e Incoraggiamento");
@@ -26,6 +27,9 @@ export default function GeneraPage() {
   const [weekCount, setWeekCount] = useState(13);
   const [rules, setRules] = useState<ScheduleRules>({ ...DEFAULT_RULES });
   const [warnings, setWarnings] = useState<string[]>([]);
+  const [preview, setPreview] = useState<Program | null>(null);
+  const [onlyMissing, setOnlyMissing] = useState(true);
+  const [selectedWeek, setSelectedWeek] = useState("");
   const [previousProgramId, setPreviousProgramId] = useState<string>("");
 
   const giovani = useMemo(
@@ -244,7 +248,8 @@ export default function GeneraPage() {
           type="button"
           className="btn-primary"
           onClick={() => {
-            const { warnings: w } = createProgramFromGenerator({
+            const { warnings: w, program } = createProgramFromGenerator({
+              preview: true,
               title,
               monthsLabel,
               startDate,
@@ -254,17 +259,31 @@ export default function GeneraPage() {
                 previousProgramId || activeProgram?.id || null,
             });
             setWarnings(w);
-            router.push("/programma");
+            setPreview(program);
           }}
         >
-          Genera e apri
+          Genera anteprima
         </button>
+        {activeProgram && (
+          <select className="input !w-auto" aria-label="Settimana da rigenerare" value={selectedWeek}
+            onChange={(event) => setSelectedWeek(event.target.value)}>
+            <option value="">Intero programma</option>
+            {activeProgram.weeks.map((week) => <option key={week.id} value={week.id}>{week.label}</option>)}
+          </select>
+        )}
+        {activeProgram && (
+          <label className="flex items-center gap-2"><input type="checkbox" checked={onlyMissing}
+            onChange={(event) => setOnlyMissing(event.target.checked)} /> Compila solo gli incarichi mancanti</label>
+        )}
         {activeProgram && (
           <button
             type="button"
             className="btn-ghost"
             onClick={() => {
+              if (!onlyMissing && !window.confirm(selectedWeek ? "Rigenerare gli incarichi della settimana selezionata?" : "Sostituire tutti gli incarichi del programma attivo?")) return;
               const w = regenerateAssignments(activeProgram.id, rules, {
+                onlyMissing,
+                weekId: selectedWeek || undefined,
                 previousProgramId:
                   previousProgramId ||
                   data.programs.find((p) => p.id !== activeProgram.id)?.id ||
@@ -284,6 +303,33 @@ export default function GeneraPage() {
         )}
       </div>
 
+      {preview && (
+        <section className="panel space-y-3">
+          <h2 className="font-display text-2xl">Anteprima · {preview.monthsLabel}</h2>
+          <details>
+            <summary>Numero di incarichi per persona</summary>
+            <ul>{giovani.map((person) => <li key={person.id}>{person.name} · {
+              [...preview.visits, ...preview.contacts].filter((item) => item.assigneeIds.includes(person.id)).length
+            }</li>)}</ul>
+          </details>
+          <ul className="divide-y">
+            {preview.weeks.map((week) => {
+              const assignments = [...preview.visits, ...preview.contacts].filter((a) => a.weekId === week.id);
+              return <li key={week.id} className="py-2"><strong>{week.label}</strong>
+                {(["visita", "contatto"] as const).map((kind) => <div key={kind}>{kind} · {
+                  assignments.filter((item) => item.kind === kind).map((a) =>
+                    a.assigneeIds.map((id) => data.people.find((p) => p.id === id)?.name).filter(Boolean).join(", ")
+                  ).join(" / ") || "Da assegnare"}</div>)}
+              </li>;
+            })}
+          </ul>
+          <button type="button" className="btn-primary" onClick={() => {
+            importJson(JSON.stringify({ ...data, programs: [...data.programs, preview], activeProgramId: preview.id }));
+            router.push("/programma");
+          }}>Salva questo programma</button>
+          <button type="button" className="btn-ghost" onClick={() => setPreview(null)}>Chiudi anteprima</button>
+        </section>
+      )}
       {warnings.length > 0 && (
         <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm">
           <strong>Avvisi:</strong>

@@ -6,7 +6,7 @@ import { useStore } from "@/lib/store";
 import { CalendarMenu } from "@/components/CalendarMenu";
 import { WhatsAppButton } from "@/components/WhatsAppButton";
 import { PdfPreviewModal } from "@/components/PdfPreview";
-import { monthGroups } from "@/lib/schedule";
+import { availableForWeek, canPairWith, monthGroups } from "@/lib/schedule";
 import {
   buildCalendarLinkUrl,
   buildEventPayload,
@@ -29,6 +29,7 @@ export default function ProgrammaPage() {
     assignment: Assignment;
   } | null>(null);
   const [pdfPreview, setPdfPreview] = useState(false);
+  const [followUp, setFollowUp] = useState(false);
 
   const groups = useMemo(
     () => (activeProgram ? monthGroups(activeProgram.weeks) : []),
@@ -46,6 +47,10 @@ export default function ProgrammaPage() {
 
   return (
     <div className="space-y-6">
+      <label className="flex items-center gap-2">
+        <input type="checkbox" checked={followUp} onChange={(event) => setFollowUp(event.target.checked)} />
+        Solo turni da seguire
+      </label>
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="font-display text-3xl">{activeProgram.title}</h1>
@@ -124,6 +129,7 @@ export default function ProgrammaPage() {
                     const a = activeProgram.visits.find(
                       (v) => v.weekId === week.id
                     );
+                    if (followUp && (a?.status === "Completato" || a?.status === "Confermato")) return null;
                     if (!a) {
                       return (
                         <tr key={week.id}>
@@ -185,6 +191,7 @@ export default function ProgrammaPage() {
                     const a = activeProgram.contacts.find(
                       (v) => v.weekId === week.id
                     );
+                    if (followUp && (a?.status === "Completato" || a?.status === "Confermato")) return null;
                     if (!a) {
                       return (
                         <tr key={week.id}>
@@ -264,7 +271,7 @@ function AssignmentRow({
   onEdit: () => void;
   onDelete: () => void;
 }) {
-  const { data, activeProgram } = useStore();
+  const { data, activeProgram, upsertAssignment } = useStore();
   const people = data.people;
   const recipient = people.find((p) => p.id === assignment.recipientId);
   const assignees = assignment.assigneeIds
@@ -278,6 +285,10 @@ function AssignmentRow({
       : "";
 
   const templateKey = assignment.kind === "visita" ? "visita" : "contatto";
+  const all = activeProgram ? [...activeProgram.visits, ...activeProgram.contacts] : [];
+  const save = (patch: Partial<Assignment>) => {
+    if (activeProgram) upsertAssignment(activeProgram.id, assignment.kind === "visita" ? "visits" : "contacts", { ...assignment, ...patch });
+  };
 
   return (
     <tr>
@@ -288,6 +299,34 @@ function AssignmentRow({
       <td>{recipientDisplayName(recipient)}</td>
       <td>{assignment.visitType}</td>
       <td>
+        <label className="block text-xs">Stato del turno
+          <select className="input my-1" value={assignment.status ?? "Da confermare"}
+            onChange={(event) => save({ status: event.target.value as Assignment["status"] })}>
+            {["Da confermare", "Confermato", "Completato", "Da riprogrammare"].map((status) => <option key={status}>{status}</option>)}
+          </select>
+        </label>
+        {recipient && activeProgram && <details className="mb-2">
+          <summary>Sostituisci incaricato</summary>
+          {assignment.assigneeIds.map((currentId) => {
+            const rules = activeProgram.rules;
+            const partner = assignees.find((person) => person?.id !== currentId);
+            const duty = assignment.kind === "contatto" ? "contatti" : assignment.visitType === "Visita in struttura" ? "visiteStruttura" : "visiteCasa";
+            const candidates = people.filter((person) => person.active && person.role === "giovane"
+              && availableForWeek(person, week)
+              && person.duties[duty] && !assignment.assigneeIds.includes(person.id)
+              && canPairWith(person, recipient, rules)
+              && (!partner || !rules.sameGenderPairs || partner.gender === person.gender)
+              && (!rules.noDoubleDutySameWeek || !all.some((item) => item.weekId === week.id && item.assigneeIds.includes(person.id))));
+            return <label key={currentId} className="block text-xs">{people.find((person) => person.id === currentId)?.name}
+              <select className="input" value="" onChange={(event) => {
+                if (event.target.value) save({ assigneeIds: assignment.assigneeIds.map((id) => id === currentId ? event.target.value : id), status: "Da confermare" });
+              }}>
+                <option value="">{candidates.length ? "Scegli sostituto" : "Nessun sostituto compatibile"}</option>
+                {candidates.map((person) => <option key={person.id} value={person.id}>{person.name} · {all.filter((item) => item.assigneeIds.includes(person.id)).length} turni</option>)}
+              </select>
+            </label>;
+          })}
+        </details>}
         <div className="flex flex-wrap items-center gap-1">
           <CalendarMenu
             assignment={assignment}
@@ -347,7 +386,7 @@ function AssignmentEditor({
 }: {
   list: "visits" | "contacts";
   assignment: Assignment;
-  weeks: { id: string; label: string }[];
+  weeks: { id: string; label: string; startDate: string; endDate: string }[];
   people: { id: string; name: string; role: string }[];
   onSave: (a: Assignment) => void;
   onCancel: () => void;
@@ -356,6 +395,7 @@ function AssignmentEditor({
   const giovani = people.filter((p) => p.role === "giovane");
   const destinatari = people.filter((p) => p.role === "destinatario");
   const maxAssignees = list === "visits" ? 2 : 1;
+  const selectedWeek = weeks.find((week) => week.id === form.weekId);
 
   return (
     <div className="panel">
@@ -451,11 +491,21 @@ function AssignmentEditor({
           </select>
         </label>
       </div>
+      <label className="mt-3 grid gap-1">Giorno e ora (facoltativi)
+        <input type="datetime-local" className="input" value={form.appointment || ""}
+          onChange={(event) => setForm({ ...form, appointment: event.target.value || undefined })} />
+        <small>Con orario, il calendario riserva un’ora. Senza orario, crea un promemoria settimanale.</small>
+      </label>
       <div className="mt-4 flex gap-2">
         <button
           type="button"
           className="btn-primary"
           onClick={() => {
+            const date = form.appointment?.slice(0, 10);
+            if (date && selectedWeek && (date < selectedWeek.startDate || date > selectedWeek.endDate)) {
+              alert("Scegli una data all’interno della settimana del turno.");
+              return;
+            }
             if (!form.recipientId || form.assigneeIds.length === 0) {
               alert("Seleziona destinatario e almeno un incaricato.");
               return;

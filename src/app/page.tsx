@@ -16,7 +16,7 @@ export default function HomePage() {
     return (
       activeProgram.weeks.find((w) => {
         const start = parseISO(w.startDate);
-        const end = addDays(parseISO(w.endDate), 1);
+        const end = new Date(addDays(parseISO(w.endDate), 1).getTime() - 1);
         return isWithinInterval(today, { start, end });
       }) ?? null
     );
@@ -60,6 +60,11 @@ export default function HomePage() {
             "Crea o seleziona un programma per monitorare i turni."}
         </p>
         <div className="mt-5 flex flex-wrap gap-2">
+          {activeProgram && <p className="w-full text-sm">
+            {activeProgram.weeks.filter((week) =>
+              !activeProgram.visits.some((item) => item.weekId === week.id)
+              || !activeProgram.contacts.some((item) => item.weekId === week.id)).length} settimane con incarichi da assegnare
+          </p>}
           <Link href="/programma" className="btn-primary">
             Apri programma
           </Link>

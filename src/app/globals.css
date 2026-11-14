@@ -119,3 +119,11 @@ body {
 .data-table tr:hover td {
   background: #fafcfb;
 }
+
+@media (max-width: 640px) {
+  .data-table, .data-table tbody, .data-table tr, .data-table td { display: block; min-width: 0; }
+  .data-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .data-table tbody { padding: .65rem; }
+  .data-table tbody tr { border: 1px solid var(--line); border-radius: .75rem; margin-bottom: .65rem; overflow: hidden; }
+  .data-table td:first-child { background: var(--teal-soft); font-weight: 700; border-top: 0; }
+}

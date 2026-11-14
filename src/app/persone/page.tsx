@@ -106,7 +106,23 @@ export default function PersonePage() {
           <tbody>
             {list.map((p) => (
               <tr key={p.id} className={!p.active ? "opacity-50" : undefined}>
-                <td className="font-medium">{p.name}</td>
+                <td className="font-medium">{p.name}
+                  <details className="mt-1 text-xs font-normal">
+                    <summary>Storico incarichi</summary>
+                    <ul className="mt-1 space-y-1">
+                      {data.programs.flatMap((program) => [...program.visits, ...program.contacts]
+                        .filter((item) => item.recipientId === p.id || item.assigneeIds.includes(p.id))
+                        .map((item) => {
+                          const week = program.weeks.find((entry) => entry.id === item.weekId);
+                          return { id: item.id, date: week?.startDate || "", label: week?.label || program.monthsLabel, item };
+                        })).sort((a, b) => b.date.localeCompare(a.date)).map(({ id, label, item }) =>
+                          <li key={id}>{label} · {item.visitType} · {item.status || "Da confermare"}</li>
+                        )}
+                      {!data.programs.some((program) => [...program.visits, ...program.contacts]
+                        .some((item) => item.recipientId === p.id || item.assigneeIds.includes(p.id))) && <li>Nessun incarico registrato</li>}
+                    </ul>
+                  </details>
+                </td>
                 <td>{p.role === "giovane" ? "Giovane" : "Destinatario"}</td>
                 <td>{p.gender}</td>
                 <td className="font-mono text-xs">{p.phone || "—"}</td>
