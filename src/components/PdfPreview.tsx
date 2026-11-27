@@ -52,17 +52,44 @@ export function PdfPreviewModal({
     [program, people, settings, origin]
   );
 
-  const run = async (label: string, fn: () => void | Promise<void>) => {
+  /**
+   * Importante: il download deve partire nello stesso gesto utente del click.
+   * Un await/setTimeout prima di <a download> fa silenziosamente fallire Chrome.
+   */
+  const run = (label: string, fn: () => void) => {
     if (busy) return;
     setBusy(label);
-    // Lascia aggiornare l’UI prima del lavoro pesante
-    await new Promise((r) => window.setTimeout(r, 30));
     try {
-      await fn();
+      fn();
     } catch (err) {
       console.error(err);
       alert(
         `Export non riuscito: ${
+          err instanceof Error ? err.message : String(err)
+        }`
+      );
+    } finally {
+      // dopo il click di download: libera lo stato al prossimo frame
+      window.requestAnimationFrame(() => setBusy(null));
+    }
+  };
+
+  const runCopy = async () => {
+    if (busy) return;
+    setBusy("copy");
+    try {
+      const ok = await copyProgramPlainText(program, people);
+      if (ok) {
+        alert(
+          "Testo copiato (senza Stato/Calendario). Incollalo in WhatsApp o email."
+        );
+      } else {
+        alert("Impossibile copiare negli appunti.");
+      }
+    } catch (err) {
+      console.error(err);
+      alert(
+        `Copia non riuscita: ${
           err instanceof Error ? err.message : String(err)
         }`
       );
@@ -148,18 +175,9 @@ export function PdfPreviewModal({
               type="button"
               className="btn-wa"
               aria-busy={busy === "copy"}
-              onClick={() =>
-                run("copy", async () => {
-                  const ok = await copyProgramPlainText(program, people);
-                  if (ok) {
-                    alert(
-                      "Testo copiato (senza Stato/Calendario). Incollalo in WhatsApp o email."
-                    );
-                  } else {
-                    alert("Impossibile copiare negli appunti.");
-                  }
-                })
-              }
+              onClick={() => {
+                void runCopy();
+              }}
             >
               {busy === "copy" ? "…" : "Copia per inviare"}
             </button>
@@ -170,7 +188,6 @@ export function PdfPreviewModal({
           <button
             type="button"
             className="btn-ghost"
-            disabled={!!busy}
             onClick={() =>
               run("pdf-full", () =>
                 downloadProgramPdf(program, people, settings, origin, "full")
