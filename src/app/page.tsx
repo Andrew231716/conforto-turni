@@ -68,6 +68,9 @@ export default function HomePage() {
           <Link href="/programma" className="btn-primary">
             Apri programma
           </Link>
+          <Link href="/resoconto" className="btn-ghost">
+            Resoconto
+          </Link>
           <Link href="/genera" className="btn-ghost">
             Genera nuovo
           </Link>
@@ -104,6 +107,18 @@ export default function HomePage() {
           value={String(withPhone)}
           href="/whatsapp"
         />
+      </section>
+
+      <section className="panel border-[var(--teal)]/50 bg-[var(--teal-soft)]/30">
+        <h2 className="font-display text-xl">Resoconto destinatari</h2>
+        <p className="mt-2 max-w-2xl text-sm text-[var(--muted)]">
+          Ultimi 6 mesi: quante volte ogni destinatario è stato visitato o
+          contattato, cronologia e previsione di chi inserire nei prossimi mesi.
+          Esporta anche in PDF da inviare.
+        </p>
+        <Link href="/resoconto" className="btn-primary mt-4 inline-flex">
+          Apri resoconto
+        </Link>
       </section>
 
       <section className="panel">
