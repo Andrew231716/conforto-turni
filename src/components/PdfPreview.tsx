@@ -1,14 +1,23 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { AppSettings, Person, Program } from "@/lib/types";
 import {
   buildCalendarLinkUrl,
   buildEventPayload,
-  recipientDisplayName,
 } from "@/lib/calendar";
-import { monthGroups } from "@/lib/schedule";
-import { downloadProgramPdf } from "@/lib/pdf";
+import { downloadProgramPdf, type ExportLayout } from "@/lib/pdf";
+import {
+  copyProgramPlainText,
+  downloadProgramExcel,
+  downloadProgramWord,
+} from "@/lib/officeExport";
+import {
+  buildProgramTables,
+  fullHeaders,
+  rowCells,
+  simpleHeaders,
+} from "@/lib/programTables";
 import { Modal } from "./Modal";
 
 export function PdfPreviewModal({
@@ -22,25 +31,147 @@ export function PdfPreviewModal({
   settings: AppSettings;
   onClose: () => void;
 }) {
-  const groups = useMemo(() => monthGroups(program.weeks), [program.weeks]);
+  const [layout, setLayout] = useState<ExportLayout>("simple");
+  const [busy, setBusy] = useState<string | null>(null);
   const origin =
     typeof window !== "undefined" ? window.location.origin : "";
 
+  const tables = useMemo(
+    () =>
+      buildProgramTables(program, people, (a) => {
+        const week = program.weeks.find((w) => w.id === a.weekId);
+        if (!week) return "";
+        const payload = buildEventPayload(
+          a,
+          week,
+          people,
+          settings.timezone || "Europe/Rome"
+        );
+        return buildCalendarLinkUrl(payload, settings, origin);
+      }),
+    [program, people, settings, origin]
+  );
+
+  const run = async (label: string, fn: () => void | Promise<void>) => {
+    try {
+      setBusy(label);
+      await fn();
+    } catch (err) {
+      alert(`Export non riuscito: ${(err as Error).message}`);
+    } finally {
+      setBusy(null);
+    }
+  };
+
   return (
-    <Modal title="Anteprima PDF" onClose={onClose} wide>
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+    <Modal title="Anteprima e download" onClose={onClose} wide>
+      <div className="mb-4 space-y-3">
         <p className="text-xs text-[var(--muted)]">
-          Controlla il risultato prima di scaricare. Premi Esc per chiudere.
+          Anteprima e download del programma. Premi Esc per chiudere.
         </p>
-        <button
-          type="button"
-          className="btn-primary"
-          onClick={() => {
-            downloadProgramPdf(program, people, settings, origin);
-          }}
-        >
-          Scarica PDF
-        </button>
+
+        <div className="rounded-lg border border-[var(--line)] bg-[var(--sand)] p-3 space-y-2">
+          <div className="text-sm font-medium">Da condividere / modificare</div>
+          <p className="text-xs text-[var(--muted)]">
+            Senza colonne Stato e Calendario. PDF per inviare; Excel e Word per
+            modificare in Office / LibreOffice / Google.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="btn-primary"
+              disabled={!!busy}
+              onClick={() =>
+                run("pdf-simple", () =>
+                  downloadProgramPdf(
+                    program,
+                    people,
+                    settings,
+                    origin,
+                    "simple"
+                  )
+                )
+              }
+            >
+              {busy === "pdf-simple" ? "…" : "PDF senza Stato/Calendario"}
+            </button>
+            <button
+              type="button"
+              className="btn-ghost"
+              disabled={!!busy}
+              onClick={() =>
+                run("excel", () => downloadProgramExcel(program, people))
+              }
+            >
+              {busy === "excel" ? "…" : "Excel editabile"}
+            </button>
+            <button
+              type="button"
+              className="btn-ghost"
+              disabled={!!busy}
+              onClick={() =>
+                run("word", () => downloadProgramWord(program, people))
+              }
+            >
+              {busy === "word" ? "…" : "Word editabile"}
+            </button>
+            <button
+              type="button"
+              className="btn-wa"
+              disabled={!!busy}
+              onClick={() =>
+                run("copy", async () => {
+                  const ok = await copyProgramPlainText(program, people);
+                  if (ok) {
+                    alert(
+                      "Testo copiato (senza Stato/Calendario). Incollalo in WhatsApp o email."
+                    );
+                  } else {
+                    alert("Impossibile copiare negli appunti.");
+                  }
+                })
+              }
+            >
+              {busy === "copy" ? "…" : "Copia per inviare"}
+            </button>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            className="btn-ghost"
+            disabled={!!busy}
+            onClick={() =>
+              run("pdf-full", () =>
+                downloadProgramPdf(program, people, settings, origin, "full")
+              )
+            }
+          >
+            {busy === "pdf-full" ? "…" : "PDF completo (con Stato e Calendario)"}
+          </button>
+        </div>
+
+        <div className="flex flex-wrap gap-1 rounded-lg border border-[var(--line)] p-0.5 text-sm w-fit">
+          <button
+            type="button"
+            className={`rounded-md px-3 py-1 ${
+              layout === "simple" ? "bg-[var(--teal-soft)] font-medium" : ""
+            }`}
+            onClick={() => setLayout("simple")}
+          >
+            Anteprima senza Stato/Calendario
+          </button>
+          <button
+            type="button"
+            className={`rounded-md px-3 py-1 ${
+              layout === "full" ? "bg-[var(--teal-soft)] font-medium" : ""
+            }`}
+            onClick={() => setLayout("full")}
+          >
+            Anteprima completa
+          </button>
+        </div>
       </div>
 
       <div className="space-y-8">
@@ -49,14 +180,20 @@ export function PdfPreviewModal({
           <p className="mt-1 text-base text-[var(--muted)]">
             {program.monthsLabel}
           </p>
-          <p className="mx-auto mt-3 max-w-3xl text-sm leading-relaxed text-[var(--muted)]">
-            Pulsante calendario: apre una pagina per aggiungere l&apos;evento
-            al calendario personale (Apple, Google, Outlook o altro). L&apos;evento
-            rimane presente per tutta la settimana indicata.
-          </p>
+          {layout === "full" ? (
+            <p className="mx-auto mt-3 max-w-3xl text-sm leading-relaxed text-[var(--muted)]">
+              Pulsante calendario: apre una pagina per aggiungere l&apos;evento
+              al calendario personale (Apple, Google, Outlook o altro).
+            </p>
+          ) : (
+            <p className="mx-auto mt-3 max-w-3xl text-sm leading-relaxed text-[var(--muted)]">
+              Anteprima versione da condividere: senza colonne Stato e
+              Calendario.
+            </p>
+          )}
         </header>
 
-        {groups.map((group) => (
+        {tables.map((group) => (
           <section
             key={group.label}
             className="space-y-4 border-t border-[var(--line)] pt-6 first:border-t-0 first:pt-0"
@@ -68,82 +205,37 @@ export function PdfPreviewModal({
             <PreviewTable
               title="Visite a Casa o in Struttura (una visita a settimana)"
               headTone="visit"
-              headers={[
-                "Data",
-                "Giovani Incaricati",
-                "Destinatario",
-                "Tipo di Visita",
-                "Stato",
-                "Calendario",
-              ]}
-              linkColumn={5}
-              rows={group.weeks.map((week) => {
-                const a = program.visits.find((v) => v.weekId === week.id);
-                return rowCells(a, week, people, program, settings, origin);
-              })}
+              headers={
+                layout === "simple"
+                  ? simpleHeaders("visita")
+                  : fullHeaders("visita")
+              }
+              linkColumn={layout === "full" ? 5 : -1}
+              rows={group.visits.map((r) => ({
+                cells: rowCells(r, layout),
+                url: r.calendarUrl,
+              }))}
             />
 
             <PreviewTable
               title="Contatti Alternativi"
               headTone="contact"
-              headers={[
-                "Data",
-                "Giovane",
-                "Destinatario",
-                "Tipo di Incoraggiamento",
-                "Stato",
-                "Calendario",
-              ]}
-              linkColumn={5}
-              rows={group.weeks.map((week) => {
-                const a = program.contacts.find((v) => v.weekId === week.id);
-                return rowCells(a, week, people, program, settings, origin);
-              })}
+              headers={
+                layout === "simple"
+                  ? simpleHeaders("contatto")
+                  : fullHeaders("contatto")
+              }
+              linkColumn={layout === "full" ? 5 : -1}
+              rows={group.contacts.map((r) => ({
+                cells: rowCells(r, layout),
+                url: r.calendarUrl,
+              }))}
             />
           </section>
         ))}
       </div>
     </Modal>
   );
-}
-
-function rowCells(
-  a: Program["visits"][number] | undefined,
-  week: Program["weeks"][number],
-  people: Person[],
-  program: Program,
-  settings: AppSettings,
-  origin: string
-) {
-  if (!a) {
-    return {
-      cells: [week.label, "—", "—", "—", "—", "—"],
-      url: "",
-    };
-  }
-  const recipient = people.find((p) => p.id === a.recipientId);
-  const assignees = a.assigneeIds
-    .map((id) => people.find((p) => p.id === id)?.name)
-    .filter(Boolean)
-    .join(", ");
-  const payload = buildEventPayload(
-    a,
-    week,
-    people,
-    settings.timezone || "Europe/Rome"
-  );
-  const url = buildCalendarLinkUrl(payload, settings, origin);
-  return {
-    cells: [
-      week.label,
-      assignees || "—",
-      recipientDisplayName(recipient),
-      a.visitType,
-      a.status ?? "Da confermare",
-      "Aggiungi al calendario",
-    ],
-    url,
-  };
 }
 
 function PreviewTable({
@@ -165,7 +257,11 @@ function PreviewTable({
         {title}
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[44rem] text-left text-base">
+        <table
+          className={`w-full text-left text-base ${
+            linkColumn >= 0 ? "min-w-[44rem]" : "min-w-[32rem]"
+          }`}
+        >
           <thead>
             <tr
               className={

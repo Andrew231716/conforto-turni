@@ -201,7 +201,7 @@ export default function ProgrammaPage() {
             className="btn-primary"
             onClick={() => setPdfPreview(true)}
           >
-            Anteprima / PDF
+            Anteprima / Scarica
           </button>
           <button
             type="button"

@@ -2,7 +2,12 @@ import type { Person, Program } from "./types";
 import { recipientDisplayName } from "./calendar";
 
 /** Esporta il programma attivo in CSV (visite + contatti) */
-export function programToCsv(program: Program, people: Person[]): string {
+export function programToCsv(
+  program: Program,
+  people: Person[],
+  opts: { includeStatus?: boolean } = {}
+): string {
+  const includeStatus = opts.includeStatus ?? true;
   const byId = new Map(people.map((p) => [p.id, p]));
   const header = [
     "tipo",
@@ -12,8 +17,7 @@ export function programToCsv(program: Program, people: Person[]): string {
     "incaricati",
     "destinatario",
     "dettaglio",
-    "stato",
-    "appuntamento",
+    ...(includeStatus ? (["stato", "appuntamento"] as const) : []),
   ];
   const rows: string[][] = [header];
 
@@ -29,7 +33,7 @@ export function programToCsv(program: Program, people: Person[]): string {
         .map((id) => byId.get(id)?.name ?? id)
         .join("; ");
       const recipient = byId.get(a.recipientId);
-      rows.push([
+      const base = [
         kind,
         week?.label ?? "",
         week?.startDate ?? "",
@@ -37,9 +41,12 @@ export function programToCsv(program: Program, people: Person[]): string {
         assignees,
         recipientDisplayName(recipient),
         a.visitType,
-        a.status ?? "",
-        a.appointment ?? "",
-      ]);
+      ];
+      rows.push(
+        includeStatus
+          ? [...base, a.status ?? "", a.appointment ?? ""]
+          : base
+      );
     }
   };
 

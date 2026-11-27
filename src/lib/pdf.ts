@@ -1,41 +1,94 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
-import type { AppSettings, Assignment, Person, Program } from "./types";
+import type { AppSettings, Person, Program } from "./types";
 import {
   buildCalendarLinkUrl,
   buildEventPayload,
-  recipientDisplayName,
 } from "./calendar";
-import { monthGroups } from "./schedule";
+import {
+  buildProgramTables,
+  fullHeaders,
+  programFilenameSlug,
+  rowCells,
+  simpleHeaders,
+  type ExportLayout,
+  type ProgramTableRow,
+} from "./programTables";
 
 const MARGIN_X = 12;
-const NOTE =
+const NOTE_FULL =
   "Pulsante calendario: apre una pagina per aggiungere l'evento al calendario personale (Apple, Google, Outlook o altro). L'evento rimane presente per tutta la settimana indicata.";
+const NOTE_SIMPLE =
+  "Versione da condividere: senza colonne Stato e Calendario.";
+
+export type { ExportLayout };
 
 export function downloadProgramPdf(
   program: Program,
   people: Person[],
   settings: AppSettings,
-  origin: string
+  origin: string,
+  layout: ExportLayout = "full"
+) {
+  const doc = buildProgramPdfDoc(program, people, settings, origin, layout);
+  const suffix = layout === "simple" ? "_condivisione" : "";
+  doc.save(`programma_${programFilenameSlug(program)}${suffix}.pdf`);
+}
+
+/** Blob PDF per eventuali usi futuri (condivisione file) */
+export function programPdfBlob(
+  program: Program,
+  people: Person[],
+  settings: AppSettings,
+  origin: string,
+  layout: ExportLayout = "full"
+): Blob {
+  const doc = buildProgramPdfDoc(program, people, settings, origin, layout);
+  return doc.output("blob");
+}
+
+function buildProgramPdfDoc(
+  program: Program,
+  people: Person[],
+  settings: AppSettings,
+  origin: string,
+  layout: ExportLayout
 ) {
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
   const contentWidth = pageWidth - MARGIN_X * 2;
 
-  // Colonne bilanciate su A4 verticale (~186mm utili)
-  const COLS = {
-    0: { cellWidth: 32 },
-    1: { cellWidth: 36 },
-    2: { cellWidth: 32 },
-    3: { cellWidth: 30 },
-    4: { cellWidth: 24 },
-    5: { cellWidth: 32 },
-  };
+  const COLS: Record<number, { cellWidth: number }> =
+    layout === "simple"
+      ? {
+          0: { cellWidth: 46 },
+          1: { cellWidth: 50 },
+          2: { cellWidth: 46 },
+          3: { cellWidth: 44 },
+        }
+      : {
+          0: { cellWidth: 32 },
+          1: { cellWidth: 36 },
+          2: { cellWidth: 32 },
+          3: { cellWidth: 30 },
+          4: { cellWidth: 24 },
+          5: { cellWidth: 32 },
+        };
 
-  const groups = monthGroups(program.weeks);
+  const tables = buildProgramTables(program, people, (a) => {
+    const week = program.weeks.find((w) => w.id === a.weekId);
+    if (!week) return "";
+    const payload = buildEventPayload(
+      a,
+      week,
+      people,
+      settings.timezone || "Europe/Rome"
+    );
+    return buildCalendarLinkUrl(payload, settings, origin);
+  });
 
-  groups.forEach((group, index) => {
+  tables.forEach((group, index) => {
     if (index > 0) doc.addPage();
 
     let y: number;
@@ -53,7 +106,8 @@ export function downloadProgramPdf(
 
       doc.setFontSize(10);
       doc.setTextColor(90);
-      const noteLines = doc.splitTextToSize(NOTE, contentWidth);
+      const note = layout === "simple" ? NOTE_SIMPLE : NOTE_FULL;
+      const noteLines = doc.splitTextToSize(note, contentWidth);
       doc.text(noteLines, pageWidth / 2, 31, {
         align: "center",
         lineHeightFactor: 1.35,
@@ -64,80 +118,31 @@ export function downloadProgramPdf(
       y = 18;
     }
 
-    // Titolo mese
     doc.setFont("helvetica", "bold");
     doc.setFontSize(16);
     doc.setTextColor(31, 111, 99);
     doc.text(group.label, MARGIN_X, y);
     y += 8;
 
-    // Visite
     doc.setFont("helvetica", "bold");
     doc.setFontSize(12);
     doc.setTextColor(28, 43, 42);
     doc.text("Visite a Casa o in Struttura (una visita a settimana)", MARGIN_X, y);
     y += 3;
 
-    const visitRows = group.weeks.map((week) => {
-      const a = program.visits.find((v) => v.weekId === week.id);
-      return assignmentRow(a, week.label, people, program, settings, origin);
-    });
-
-    autoTable(doc, {
-      rowPageBreak: "avoid",
+    y = drawTable(doc, {
       startY: y,
-      margin: { left: MARGIN_X, right: MARGIN_X, bottom: 14 },
-      tableWidth: contentWidth,
-      head: [
-        [
-          "Data",
-          "Giovani Incaricati",
-          "Destinatario",
-          "Tipo di Visita",
-          "Stato",
-          "Calendario",
-        ],
-      ],
-      body: visitRows.map((r) => [
-        r.data,
-        r.incarichi,
-        r.dest,
-        r.tipo,
-        r.stato,
-        "Aggiungi al calendario",
-      ]),
-      styles: {
-        fontSize: 11,
-        cellPadding: 3,
-        overflow: "linebreak",
-        valign: "middle",
-        textColor: [28, 43, 42],
-        lineColor: [200, 210, 205],
-        lineWidth: 0.2,
-      },
-      headStyles: {
-        fillColor: [30, 90, 120],
-        textColor: 255,
-        fontStyle: "bold",
-        fontSize: 11,
-        cellPadding: 3.2,
-      },
-      alternateRowStyles: { fillColor: [248, 251, 249] },
+      contentWidth,
+      head: layout === "simple" ? simpleHeaders("visita") : fullHeaders("visita"),
+      rows: group.visits,
+      layout,
+      headFill: [30, 90, 120],
       columnStyles: COLS,
-      didDrawCell: (data) => {
-        if (data.section !== "body" || data.column.index !== 5) return;
-        const row = visitRows[data.row.index];
-        if (!row?.url) return;
-        doc.link(data.cell.x, data.cell.y, data.cell.width, data.cell.height, {
-          url: row.url,
-        });
-      },
+      linkColumn: layout === "full" ? 5 : -1,
     });
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    y = ((doc as any).lastAutoTable?.finalY ?? y) + 10;
+    y += 10;
 
-    // Se non c'è spazio per i contatti, nuova pagina con stesso mese
     if (y > pageHeight - 60) {
       doc.addPage();
       y = 18;
@@ -154,104 +159,74 @@ export function downloadProgramPdf(
     doc.text("Contatti Alternativi", MARGIN_X, y);
     y += 3;
 
-    const contactRows = group.weeks.map((week) => {
-      const a = program.contacts.find((v) => v.weekId === week.id);
-      return assignmentRow(a, week.label, people, program, settings, origin);
-    });
-
-    autoTable(doc, {
-      rowPageBreak: "avoid",
+    drawTable(doc, {
       startY: y,
-      margin: { left: MARGIN_X, right: MARGIN_X, bottom: 14 },
-      tableWidth: contentWidth,
-      head: [
-        [
-          "Data",
-          "Giovane",
-          "Destinatario",
-          "Tipo di Incoraggiamento",
-          "Stato",
-          "Calendario",
-        ],
-      ],
-      body: contactRows.map((r) => [
-        r.data,
-        r.incarichi,
-        r.dest,
-        r.tipo,
-        r.stato,
-        "Aggiungi al calendario",
-      ]),
-      styles: {
-        fontSize: 11,
-        cellPadding: 3,
-        overflow: "linebreak",
-        valign: "middle",
-        textColor: [28, 43, 42],
-        lineColor: [200, 210, 205],
-        lineWidth: 0.2,
-      },
-      headStyles: {
-        fillColor: [70, 110, 90],
-        textColor: 255,
-        fontStyle: "bold",
-        fontSize: 11,
-        cellPadding: 3.2,
-      },
-      alternateRowStyles: { fillColor: [248, 251, 249] },
+      contentWidth,
+      head:
+        layout === "simple"
+          ? simpleHeaders("contatto")
+          : fullHeaders("contatto"),
+      rows: group.contacts,
+      layout,
+      headFill: [70, 110, 90],
       columnStyles: COLS,
-      didDrawCell: (data) => {
-        if (data.section !== "body" || data.column.index !== 5) return;
-        const row = contactRows[data.row.index];
-        if (!row?.url) return;
-        doc.link(data.cell.x, data.cell.y, data.cell.width, data.cell.height, {
-          url: row.url,
-        });
-      },
+      linkColumn: layout === "full" ? 5 : -1,
     });
   });
 
-  const filename = `programma_${program.monthsLabel.replace(/\s+/g, "_")}.pdf`;
-  doc.save(filename);
+  return doc;
 }
 
-function assignmentRow(
-  a: Assignment | undefined,
-  label: string,
-  people: Person[],
-  program: Program,
-  settings: AppSettings,
-  origin: string
-) {
-  if (!a) {
-    return {
-      data: label,
-      incarichi: "—",
-      dest: "—",
-      tipo: "—",
-      stato: "—",
-      url: "",
-    };
+function drawTable(
+  doc: jsPDF,
+  opts: {
+    startY: number;
+    contentWidth: number;
+    head: string[];
+    rows: ProgramTableRow[];
+    layout: ExportLayout;
+    headFill: [number, number, number];
+    columnStyles: Record<number, { cellWidth: number }>;
+    linkColumn: number;
   }
-  const week = program.weeks.find((w) => w.id === a.weekId)!;
-  const recipient = people.find((p) => p.id === a.recipientId);
-  const assignees = a.assigneeIds
-    .map((id) => people.find((p) => p.id === id)?.name)
-    .filter(Boolean)
-    .join(", ");
-  const payload = buildEventPayload(
-    a,
-    week,
-    people,
-    settings.timezone || "Europe/Rome"
-  );
-  const url = buildCalendarLinkUrl(payload, settings, origin);
-  return {
-    data: label,
-    incarichi: assignees,
-    dest: recipientDisplayName(recipient),
-    tipo: a.visitType,
-    stato: a.status ?? "Da confermare",
-    url,
-  };
+): number {
+  autoTable(doc, {
+    rowPageBreak: "avoid",
+    startY: opts.startY,
+    margin: { left: MARGIN_X, right: MARGIN_X, bottom: 14 },
+    tableWidth: opts.contentWidth,
+    head: [opts.head],
+    body: opts.rows.map((r) => rowCells(r, opts.layout)),
+    styles: {
+      fontSize: 11,
+      cellPadding: 3,
+      overflow: "linebreak",
+      valign: "middle",
+      textColor: [28, 43, 42],
+      lineColor: [200, 210, 205],
+      lineWidth: 0.2,
+    },
+    headStyles: {
+      fillColor: opts.headFill,
+      textColor: 255,
+      fontStyle: "bold",
+      fontSize: 11,
+      cellPadding: 3.2,
+    },
+    alternateRowStyles: { fillColor: [248, 251, 249] },
+    columnStyles: opts.columnStyles,
+    didDrawCell: (data) => {
+      if (opts.linkColumn < 0) return;
+      if (data.section !== "body" || data.column.index !== opts.linkColumn)
+        return;
+      const row = opts.rows[data.row.index];
+      if (!row?.calendarUrl) return;
+      doc.link(data.cell.x, data.cell.y, data.cell.width, data.cell.height, {
+        url: row.calendarUrl,
+      });
+    },
+  });
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return ((doc as any).lastAutoTable?.finalY ?? opts.startY) as number;
 }
