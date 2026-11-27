@@ -20,18 +20,26 @@ const NOTE_FULL =
   "Pulsante calendario: apre una pagina per aggiungere l'evento al calendario personale (Apple, Google, Outlook o altro). L'evento rimane presente per tutta la settimana indicata.";
 const NOTE_SIMPLE =
   "Versione da condividere: senza colonne Stato e Calendario.";
+const NOTE_EDITABLE =
+  "PDF editabile: senza Stato e Calendario. Puoi scrivere nelle caselle Note con Anteprima, Acrobat o un lettore PDF compatibile.";
 
 export type { ExportLayout };
+export type PdfDownloadKind = ExportLayout | "editable";
 
 export function downloadProgramPdf(
   program: Program,
   people: Person[],
   settings: AppSettings,
   origin: string,
-  layout: ExportLayout = "full"
+  kind: PdfDownloadKind = "full"
 ) {
-  const doc = buildProgramPdfDoc(program, people, settings, origin, layout);
-  const suffix = layout === "simple" ? "_condivisione" : "";
+  const doc = buildProgramPdfDoc(program, people, settings, origin, kind);
+  const suffix =
+    kind === "editable"
+      ? "_editabile"
+      : kind === "simple"
+        ? "_condivisione"
+        : "";
   doc.save(`programma_${programFilenameSlug(program)}${suffix}.pdf`);
 }
 
@@ -41,9 +49,9 @@ export function programPdfBlob(
   people: Person[],
   settings: AppSettings,
   origin: string,
-  layout: ExportLayout = "full"
+  kind: PdfDownloadKind = "full"
 ): Blob {
-  const doc = buildProgramPdfDoc(program, people, settings, origin, layout);
+  const doc = buildProgramPdfDoc(program, people, settings, origin, kind);
   return doc.output("blob");
 }
 
@@ -52,15 +60,25 @@ function buildProgramPdfDoc(
   people: Person[],
   settings: AppSettings,
   origin: string,
-  layout: ExportLayout
+  kind: PdfDownloadKind
 ) {
+  const layout: ExportLayout = kind === "full" ? "full" : "simple";
+  const editable = kind === "editable";
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
   const contentWidth = pageWidth - MARGIN_X * 2;
+  let fieldSeq = 0;
 
-  const COLS: Record<number, { cellWidth: number }> =
-    layout === "simple"
+  const COLS: Record<number, { cellWidth: number }> = editable
+    ? {
+        0: { cellWidth: 36 },
+        1: { cellWidth: 42 },
+        2: { cellWidth: 38 },
+        3: { cellWidth: 36 },
+        4: { cellWidth: 34 },
+      }
+    : layout === "simple"
       ? {
           0: { cellWidth: 46 },
           1: { cellWidth: 50 },
@@ -106,7 +124,11 @@ function buildProgramPdfDoc(
 
       doc.setFontSize(10);
       doc.setTextColor(90);
-      const note = layout === "simple" ? NOTE_SIMPLE : NOTE_FULL;
+      const note = editable
+        ? NOTE_EDITABLE
+        : layout === "simple"
+          ? NOTE_SIMPLE
+          : NOTE_FULL;
       const noteLines = doc.splitTextToSize(note, contentWidth);
       doc.text(noteLines, pageWidth / 2, 31, {
         align: "center",
@@ -130,15 +152,23 @@ function buildProgramPdfDoc(
     doc.text("Visite a Casa o in Struttura (una visita a settimana)", MARGIN_X, y);
     y += 3;
 
+    const visitHead = editable
+      ? [...simpleHeaders("visita"), "Note"]
+      : layout === "simple"
+        ? simpleHeaders("visita")
+        : fullHeaders("visita");
+
     y = drawTable(doc, {
       startY: y,
       contentWidth,
-      head: layout === "simple" ? simpleHeaders("visita") : fullHeaders("visita"),
+      head: visitHead,
       rows: group.visits,
       layout,
+      editable,
       headFill: [30, 90, 120],
       columnStyles: COLS,
       linkColumn: layout === "full" ? 5 : -1,
+      nextFieldName: () => `note_v_${index}_${fieldSeq++}`,
     });
 
     y += 10;
@@ -159,18 +189,23 @@ function buildProgramPdfDoc(
     doc.text("Contatti Alternativi", MARGIN_X, y);
     y += 3;
 
+    const contactHead = editable
+      ? [...simpleHeaders("contatto"), "Note"]
+      : layout === "simple"
+        ? simpleHeaders("contatto")
+        : fullHeaders("contatto");
+
     drawTable(doc, {
       startY: y,
       contentWidth,
-      head:
-        layout === "simple"
-          ? simpleHeaders("contatto")
-          : fullHeaders("contatto"),
+      head: contactHead,
       rows: group.contacts,
       layout,
+      editable,
       headFill: [70, 110, 90],
       columnStyles: COLS,
       linkColumn: layout === "full" ? 5 : -1,
+      nextFieldName: () => `note_c_${index}_${fieldSeq++}`,
     });
   });
 
@@ -185,18 +220,26 @@ function drawTable(
     head: string[];
     rows: ProgramTableRow[];
     layout: ExportLayout;
+    editable: boolean;
     headFill: [number, number, number];
     columnStyles: Record<number, { cellWidth: number }>;
     linkColumn: number;
+    nextFieldName: () => string;
   }
 ): number {
+  const body = opts.rows.map((r) => {
+    const cells = rowCells(r, opts.layout);
+    return opts.editable ? [...cells, ""] : cells;
+  });
+  const noteColumn = opts.editable ? opts.head.length - 1 : -1;
+
   autoTable(doc, {
     rowPageBreak: "avoid",
     startY: opts.startY,
     margin: { left: MARGIN_X, right: MARGIN_X, bottom: 14 },
     tableWidth: opts.contentWidth,
     head: [opts.head],
-    body: opts.rows.map((r) => rowCells(r, opts.layout)),
+    body,
     styles: {
       fontSize: 11,
       cellPadding: 3,
@@ -205,6 +248,7 @@ function drawTable(
       textColor: [28, 43, 42],
       lineColor: [200, 210, 205],
       lineWidth: 0.2,
+      minCellHeight: opts.editable ? 10 : undefined,
     },
     headStyles: {
       fillColor: opts.headFill,
@@ -216,14 +260,43 @@ function drawTable(
     alternateRowStyles: { fillColor: [248, 251, 249] },
     columnStyles: opts.columnStyles,
     didDrawCell: (data) => {
-      if (opts.linkColumn < 0) return;
-      if (data.section !== "body" || data.column.index !== opts.linkColumn)
-        return;
-      const row = opts.rows[data.row.index];
-      if (!row?.calendarUrl) return;
-      doc.link(data.cell.x, data.cell.y, data.cell.width, data.cell.height, {
-        url: row.calendarUrl,
-      });
+      if (
+        opts.linkColumn >= 0 &&
+        data.section === "body" &&
+        data.column.index === opts.linkColumn
+      ) {
+        const row = opts.rows[data.row.index];
+        if (row?.calendarUrl) {
+          doc.link(
+            data.cell.x,
+            data.cell.y,
+            data.cell.width,
+            data.cell.height,
+            { url: row.calendarUrl }
+          );
+        }
+      }
+
+      if (
+        noteColumn >= 0 &&
+        data.section === "body" &&
+        data.column.index === noteColumn
+      ) {
+        // jsPDF AcroForm usa le stesse coordinate del documento (origine in alto a sinistra)
+        const x = data.cell.x + 1;
+        const y = data.cell.y + 1;
+        const w = Math.max(4, data.cell.width - 2);
+        const h = Math.max(6, data.cell.height - 2);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const TextField = (jsPDF as any).AcroForm.TextField;
+        const field = new TextField();
+        field.fieldName = opts.nextFieldName();
+        field.Rect = [x, y, w, h];
+        field.multiline = true;
+        field.value = "";
+        field.fontSize = 9;
+        doc.addField(field);
+      }
     },
   });
 

@@ -71,10 +71,13 @@ export function PdfPreviewModal({
         </p>
 
         <div className="rounded-lg border border-[var(--line)] bg-[var(--sand)] p-3 space-y-2">
-          <div className="text-sm font-medium">Da condividere / modificare</div>
+          <div className="text-sm font-medium">
+            Versioni senza Stato e Calendario
+          </div>
           <p className="text-xs text-[var(--muted)]">
-            Senza colonne Stato e Calendario. PDF per inviare; Excel e Word per
-            modificare in Office / LibreOffice / Google.
+            PDF editabile: campi Note compilabili. Excel e Word: modificabili in
+            Office / LibreOffice / Google. PDF da inviare: solo lettura, ideale
+            per WhatsApp.
           </p>
           <div className="flex flex-wrap gap-2">
             <button
@@ -82,18 +85,18 @@ export function PdfPreviewModal({
               className="btn-primary"
               disabled={!!busy}
               onClick={() =>
-                run("pdf-simple", () =>
+                run("pdf-editable", () =>
                   downloadProgramPdf(
                     program,
                     people,
                     settings,
                     origin,
-                    "simple"
+                    "editable"
                   )
                 )
               }
             >
-              {busy === "pdf-simple" ? "…" : "PDF senza Stato/Calendario"}
+              {busy === "pdf-editable" ? "…" : "PDF editabile"}
             </button>
             <button
               type="button"
@@ -114,6 +117,24 @@ export function PdfPreviewModal({
               }
             >
               {busy === "word" ? "…" : "Word editabile"}
+            </button>
+            <button
+              type="button"
+              className="btn-ghost"
+              disabled={!!busy}
+              onClick={() =>
+                run("pdf-simple", () =>
+                  downloadProgramPdf(
+                    program,
+                    people,
+                    settings,
+                    origin,
+                    "simple"
+                  )
+                )
+              }
+            >
+              {busy === "pdf-simple" ? "…" : "PDF da inviare"}
             </button>
             <button
               type="button"
