@@ -3,11 +3,19 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useStore } from "@/lib/store";
-import { DEFAULT_RULES, type Program, type ScheduleRules } from "@/lib/types";
+import {
+  DEFAULT_RULES,
+  type ManualPeriod,
+  type Program,
+  type ScheduleRules,
+  type SlotDurationWeeks,
+} from "@/lib/types";
 import {
   describeCycleStart,
+  formatWeekLabel,
   sortDestinatari,
 } from "@/lib/schedule";
+import { parseISO } from "date-fns";
 
 export default function GeneraPage() {
   const {
@@ -25,6 +33,12 @@ export default function GeneraPage() {
   );
   const [startDate, setStartDate] = useState("2026-11-30");
   const [weekCount, setWeekCount] = useState(13);
+  const [slotDurationWeeks, setSlotDurationWeeks] =
+    useState<SlotDurationWeeks>(1);
+  const [periodMode, setPeriodMode] = useState<"auto" | "manual">("auto");
+  const [manualPeriods, setManualPeriods] = useState<ManualPeriod[]>([
+    { startDate: "2026-11-30", endDate: "2026-12-06" },
+  ]);
   const [rules, setRules] = useState<ScheduleRules>({ ...DEFAULT_RULES });
   const [warnings, setWarnings] = useState<string[]>([]);
   const [preview, setPreview] = useState<Program | null>(null);
@@ -91,28 +105,167 @@ export default function GeneraPage() {
             onChange={(e) => setMonthsLabel(e.target.value)}
           />
         </label>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <label className="grid gap-1">
-            <span className="label">Data inizio (lunedì consigliato)</span>
-            <input
-              type="date"
-              className="input"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-            />
-          </label>
-          <label className="grid gap-1">
-            <span className="label">Numero settimane</span>
-            <input
-              type="number"
-              min={1}
-              max={26}
-              className="input"
-              value={weekCount}
-              onChange={(e) => setWeekCount(Number(e.target.value))}
-            />
-          </label>
-        </div>
+
+        <fieldset className="space-y-2">
+          <legend className="label">Durata di ogni turno</legend>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              className={slotDurationWeeks === 1 ? "btn-primary" : "btn-ghost"}
+              onClick={() => setSlotDurationWeeks(1)}
+            >
+              1 settimana
+            </button>
+            <button
+              type="button"
+              className={slotDurationWeeks === 2 ? "btn-primary" : "btn-ghost"}
+              onClick={() => setSlotDurationWeeks(2)}
+            >
+              2 settimane
+            </button>
+          </div>
+          <p className="text-xs text-[var(--muted)]">
+            Vale per tutti i mesi del programma. Con 2 settimane ogni turno
+            copre 14 giorni e il calendario dura di conseguenza.
+          </p>
+        </fieldset>
+
+        <fieldset className="space-y-2">
+          <legend className="label">Come definire i periodi</legend>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              className={periodMode === "auto" ? "btn-primary" : "btn-ghost"}
+              onClick={() => setPeriodMode("auto")}
+            >
+              Automatico
+            </button>
+            <button
+              type="button"
+              className={periodMode === "manual" ? "btn-primary" : "btn-ghost"}
+              onClick={() => setPeriodMode("manual")}
+            >
+              Manuale
+            </button>
+          </div>
+        </fieldset>
+
+        {periodMode === "auto" ? (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="grid gap-1">
+              <span className="label">Data inizio (lunedì consigliato)</span>
+              <input
+                type="date"
+                className="input"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+              />
+            </label>
+            <label className="grid gap-1">
+              <span className="label">
+                Numero turni ({slotDurationWeeks === 1 ? "settimanali" : "da 2 settimane"})
+              </span>
+              <input
+                type="number"
+                min={1}
+                max={26}
+                className="input"
+                value={weekCount}
+                onChange={(e) => setWeekCount(Number(e.target.value))}
+              />
+            </label>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <p className="text-sm text-[var(--muted)]">
+              Imposta a mano inizio e fine di ogni turno. Puoi usare date
+              qualsiasi (anche diverse da 7/14 giorni).
+            </p>
+            {manualPeriods.map((period, index) => (
+              <div
+                key={index}
+                className="grid gap-2 rounded-lg border border-[var(--line)] p-3 sm:grid-cols-[1fr_1fr_auto]"
+              >
+                <label className="grid gap-1">
+                  <span className="label">Inizio</span>
+                  <input
+                    type="date"
+                    className="input"
+                    value={period.startDate}
+                    onChange={(e) => {
+                      const next = [...manualPeriods];
+                      next[index] = {
+                        ...next[index],
+                        startDate: e.target.value,
+                      };
+                      setManualPeriods(next);
+                    }}
+                  />
+                </label>
+                <label className="grid gap-1">
+                  <span className="label">Fine</span>
+                  <input
+                    type="date"
+                    className="input"
+                    value={period.endDate}
+                    onChange={(e) => {
+                      const next = [...manualPeriods];
+                      next[index] = {
+                        ...next[index],
+                        endDate: e.target.value,
+                      };
+                      setManualPeriods(next);
+                    }}
+                  />
+                </label>
+                <div className="flex items-end gap-2">
+                  <span className="pb-2 text-xs text-[var(--muted)]">
+                    {period.startDate &&
+                    period.endDate &&
+                    period.startDate <= period.endDate
+                      ? formatWeekLabel(
+                          parseISO(period.startDate),
+                          parseISO(period.endDate)
+                        )
+                      : "Date non valide"}
+                  </span>
+                  <button
+                    type="button"
+                    className="btn-ghost !px-2 !py-1 text-xs text-red-700"
+                    disabled={manualPeriods.length <= 1}
+                    onClick={() =>
+                      setManualPeriods(
+                        manualPeriods.filter((_, i) => i !== index)
+                      )
+                    }
+                  >
+                    Rimuovi
+                  </button>
+                </div>
+              </div>
+            ))}
+            <button
+              type="button"
+              className="btn-ghost"
+              onClick={() => {
+                const last = manualPeriods[manualPeriods.length - 1];
+                const nextStart = last?.endDate
+                  ? addOneDay(last.endDate)
+                  : startDate;
+                const span = slotDurationWeeks * 7 - 1;
+                setManualPeriods([
+                  ...manualPeriods,
+                  {
+                    startDate: nextStart,
+                    endDate: addDaysIso(nextStart, span),
+                  },
+                ]);
+              }}
+            >
+              Aggiungi periodo
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="panel space-y-3">
@@ -205,12 +358,12 @@ export default function GeneraPage() {
         <Rule
           checked={rules.noDoubleDutySameWeek}
           onChange={(v) => setRules({ ...rules, noDoubleDutySameWeek: v })}
-          label="Niente due incarichi nella stessa settimana (visita e contatto)"
+          label="Niente due incarichi nello stesso turno (visita e contatto)"
         />
         <Rule
           checked={rules.skipConsecutiveWeeks}
           onChange={(v) => setRules({ ...rules, skipConsecutiveWeeks: v })}
-          label="Dove possibile, salta almeno una settimana tra un incarico e il successivo"
+          label="Dove possibile, salta almeno un turno tra un incarico e il successivo"
         />
         <Rule
           checked={rules.femaleYouthOnlyVisitFemales}
@@ -248,12 +401,24 @@ export default function GeneraPage() {
           type="button"
           className="btn-primary"
           onClick={() => {
+            if (periodMode === "manual") {
+              const invalid = manualPeriods.some(
+                (p) => !p.startDate || !p.endDate || p.startDate > p.endDate
+              );
+              if (invalid || manualPeriods.length === 0) {
+                alert("Controlla le date dei periodi manuali (inizio ≤ fine).");
+                return;
+              }
+            }
             const { warnings: w, program } = createProgramFromGenerator({
               preview: true,
               title,
               monthsLabel,
               startDate,
               weekCount,
+              slotDurationWeeks,
+              manualPeriods:
+                periodMode === "manual" ? manualPeriods : undefined,
               rules,
               previousProgramId:
                 previousProgramId || activeProgram?.id || null,
@@ -377,4 +542,14 @@ function Rule({
       <span>{label}</span>
     </label>
   );
+}
+
+function addDaysIso(isoDate: string, days: number): string {
+  const d = parseISO(isoDate);
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+function addOneDay(isoDate: string): string {
+  return addDaysIso(isoDate, 1);
 }

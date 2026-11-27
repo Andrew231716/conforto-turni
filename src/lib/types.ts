@@ -56,11 +56,22 @@ export interface ScheduleRules {
   skipConsecutiveWeeks: boolean;
 }
 
+/** Durata di un turno in settimane (1 = settimanale, 2 = quindicinale) */
+export type SlotDurationWeeks = 1 | 2;
+
 export interface WeekSlot {
   id: string;
   startDate: string; // YYYY-MM-DD
   endDate: string;
   label: string;
+  /** Durata del turno in settimane (default 1) */
+  durationWeeks?: SlotDurationWeeks;
+}
+
+/** Periodo manuale definito dall'utente per un turno */
+export interface ManualPeriod {
+  startDate: string; // YYYY-MM-DD
+  endDate: string; // YYYY-MM-DD
 }
 
 export interface Assignment {
@@ -90,6 +101,8 @@ export interface Program {
   contacts: Assignment[];
   rules: ScheduleRules;
   whatsappTemplates: WhatsAppTemplates;
+  /** Durata di ogni turno in settimane (1 o 2). Default 1. */
+  slotDurationWeeks?: SlotDurationWeeks;
   createdAt: string;
   updatedAt: string;
 }

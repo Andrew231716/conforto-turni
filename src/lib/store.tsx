@@ -14,9 +14,11 @@ import type {
   AppData,
   AppSettings,
   Assignment,
+  ManualPeriod,
   Person,
   Program,
   ScheduleRules,
+  SlotDurationWeeks,
   WhatsAppTemplates,
 } from "./types";
 import { DEFAULT_RULES, DEFAULT_WHATSAPP, normalizePerson } from "./types";
@@ -27,7 +29,11 @@ import {
   resetToSeed,
   saveAppData,
 } from "./storage";
-import { generateProgramAssignments, generateWeeks } from "./schedule";
+import {
+  generateProgramAssignments,
+  generateWeeks,
+  generateWeeksFromManualPeriods,
+} from "./schedule";
 
 interface StoreValue {
   ready: boolean;
@@ -53,6 +59,10 @@ interface StoreValue {
     monthsLabel: string;
     startDate: string;
     weekCount: number;
+    /** 1 = settimanale, 2 = quindicinale */
+    slotDurationWeeks?: SlotDurationWeeks;
+    /** Se presenti, usati al posto di startDate/weekCount */
+    manualPeriods?: ManualPeriod[];
     rules: ScheduleRules;
     visitRecipientIds?: string[];
     contactRecipientIds?: string[];
@@ -178,7 +188,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         });
       },
       createProgramFromGenerator: (opts) => {
-        const weeks = generateWeeks(opts.startDate, opts.weekCount);
+        const duration = opts.slotDurationWeeks ?? 1;
+        const weeks =
+          opts.manualPeriods && opts.manualPeriods.length > 0
+            ? generateWeeksFromManualPeriods(opts.manualPeriods)
+            : generateWeeks(opts.startDate, opts.weekCount, duration);
         const previousProgram =
           (opts.previousProgramId
             ? d.programs.find((p) => p.id === opts.previousProgramId)
@@ -200,6 +214,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           visits,
           contacts,
           rules: opts.rules,
+          slotDurationWeeks: duration,
           whatsappTemplates: { ...DEFAULT_WHATSAPP },
           createdAt: now,
           updatedAt: now,

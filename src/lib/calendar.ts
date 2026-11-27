@@ -1,6 +1,16 @@
 import type { Assignment, AppSettings, Person, WeekSlot } from "./types";
 
-const WEEK_MINUTES = 7 * 24 * 60; // 10080
+const DAY_MINUTES = 24 * 60;
+
+/** Minuti di durata del turno in base alle date inizio/fine */
+export function slotDurationMinutes(week: WeekSlot): number {
+  const start = new Date(`${week.startDate}T00:00:00`);
+  const end = new Date(`${week.endDate}T00:00:00`);
+  const days =
+    Math.round((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)) + 1;
+  const safeDays = Math.max(1, days);
+  return safeDays * DAY_MINUTES;
+}
 
 export function recipientDisplayName(
   recipient: Person | undefined
@@ -30,19 +40,21 @@ export function buildEventPayload(
     .filter(Boolean) as string[];
   const dest = recipientDisplayName(recipient);
   const isVisit = assignment.kind === "visita";
+  const weeks = week.durationWeeks ?? 1;
+  const periodWord = weeks >= 2 ? "Periodo" : "Settimana";
 
   const title = isVisit
-    ? `Settimana visita: ${dest}`
-    : `Settimana contatto: ${dest}`;
+    ? `${periodWord} visita: ${dest}`
+    : `${periodWord} contatto: ${dest}`;
 
   const description = isVisit
-    ? `Settimana: ${week.label}. Incaricati: ${assignees.join(", ")}. Tipo: ${assignment.visitType}. Evento settimanale per ricordare di organizzare e svolgere la visita durante i giorni indicati.`
-    : `Settimana: ${week.label}. Giovane incaricato/a: ${assignees.join(", ")}. Modalita: ${assignment.visitType}. Evento settimanale per ricordare di contattare la persona durante i giorni indicati.`;
+    ? `${periodWord}: ${week.label}. Incaricati: ${assignees.join(", ")}. Tipo: ${assignment.visitType}. Evento per ricordare di organizzare e svolgere la visita durante i giorni indicati.`
+    : `${periodWord}: ${week.label}. Giovane incaricato/a: ${assignees.join(", ")}. Modalita: ${assignment.visitType}. Evento per ricordare di contattare la persona durante i giorni indicati.`;
 
   return {
     title,
     start: assignment.appointment?.replace("T", " ") || `${week.startDate} 00:00`,
-    duration: assignment.appointment ? 60 : WEEK_MINUTES,
+    duration: assignment.appointment ? 60 : slotDurationMinutes(week),
     description,
     timezone: "Europe/Rome",
   };

@@ -9,27 +9,58 @@ import type {
   WeekSlot,
 } from "./types";
 
+/**
+ * Genera turni automatici a partire da una data.
+ * @param durationWeeks 1 = settimanale (7 giorni), 2 = quindicinale (14 giorni)
+ * @param slotCount numero di turni da creare
+ */
 export function generateWeeks(
   startDate: string,
-  weekCount: number
+  slotCount: number,
+  durationWeeks: 1 | 2 = 1
 ): WeekSlot[] {
   const weeks: WeekSlot[] = [];
   let cursor = parseISO(startDate);
-  for (let i = 0; i < weekCount; i++) {
+  const spanDays = durationWeeks * 7 - 1; // 6 oppure 13
+  for (let i = 0; i < slotCount; i++) {
     const start = cursor;
-    const end = addDays(start, 6);
+    const end = addDays(start, spanDays);
     weeks.push({
       id: nanoid(8),
       startDate: format(start, "yyyy-MM-dd"),
       endDate: format(end, "yyyy-MM-dd"),
       label: formatWeekLabel(start, end),
+      durationWeeks,
     });
     cursor = addDays(end, 1);
   }
   return weeks;
 }
 
-function formatWeekLabel(start: Date, end: Date): string {
+/** Crea turni da periodi scelti manualmente (inizio/fine liberi) */
+export function generateWeeksFromManualPeriods(
+  periods: { startDate: string; endDate: string }[]
+): WeekSlot[] {
+  return periods
+    .filter((p) => p.startDate && p.endDate && p.startDate <= p.endDate)
+    .map((p) => {
+      const start = parseISO(p.startDate);
+      const end = parseISO(p.endDate);
+      const daySpan = Math.round(
+        (end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)
+      ) + 1;
+      const durationWeeks: 1 | 2 = daySpan >= 10 ? 2 : 1;
+      return {
+        id: nanoid(8),
+        startDate: p.startDate,
+        endDate: p.endDate,
+        label: formatWeekLabel(start, end),
+        durationWeeks,
+      };
+    });
+}
+
+export function formatWeekLabel(start: Date, end: Date): string {
   const sameMonth = start.getMonth() === end.getMonth();
   if (sameMonth) {
     return `${format(start, "d", { locale: it })}-${format(end, "d MMMM", { locale: it })}`;
