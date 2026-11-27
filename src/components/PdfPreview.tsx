@@ -110,28 +110,20 @@ export function PdfPreviewModal({
             Versioni senza Stato e Calendario
           </div>
           <p className="text-xs text-[var(--muted)]">
-            PDF editabile: senza Stato/Calendario, caselle della tabella
-            modificabili. Excel e Word: modificabili in Office. PDF da inviare:
-            solo lettura.
+            Per modificare date, mesi, nomi o aggiungere righe/colonne usa Word
+            o Excel (il PDF non permette di aggiungere righe). «PDF da inviare»
+            è solo per condividere/stampare.
           </p>
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
               className="btn-primary"
-              aria-busy={busy === "pdf-editable"}
+              aria-busy={busy === "word"}
               onClick={() =>
-                run("pdf-editable", () =>
-                  downloadProgramPdf(
-                    program,
-                    people,
-                    settings,
-                    origin,
-                    "editable"
-                  )
-                )
+                run("word", () => downloadProgramWord(program, people))
               }
             >
-              {busy === "pdf-editable" ? "Preparazione…" : "PDF editabile"}
+              {busy === "word" ? "Preparazione…" : "Word editabile"}
             </button>
             <button
               type="button"
@@ -142,16 +134,6 @@ export function PdfPreviewModal({
               }
             >
               {busy === "excel" ? "Preparazione…" : "Excel editabile"}
-            </button>
-            <button
-              type="button"
-              className="btn-ghost"
-              aria-busy={busy === "word"}
-              onClick={() =>
-                run("word", () => downloadProgramWord(program, people))
-              }
-            >
-              {busy === "word" ? "Preparazione…" : "Word editabile"}
             </button>
             <button
               type="button"

@@ -14,20 +14,38 @@ import { buildXlsxBlob } from "./xlsxExport";
  * Excel editabile (.xlsx OOXML, apre in Microsoft Excel / LibreOffice / Google Sheets).
  * Sempre senza colonne Stato e Calendario.
  */
+const EMPTY_ROWS = 4;
+
+function withSpareRows(rows: string[][], cols: number): string[][] {
+  const spare = Array.from({ length: EMPTY_ROWS }, () =>
+    Array.from({ length: cols }, () => "")
+  );
+  return [...rows, ...spare];
+}
+
 export function downloadProgramExcel(program: Program, people: Person[]) {
   const tables = buildProgramTables(program, people);
+  const visitCols = simpleHeaders("visita").length;
+  const contactCols = simpleHeaders("contatto").length;
   const sheets = tables.map((month) => {
     const rows: string[][] = [
       [program.title],
-      [`${program.monthsLabel} — ${month.label}`],
+      [program.monthsLabel],
+      [month.label],
       [],
       ["Visite a Casa o in Struttura"],
       simpleHeaders("visita"),
-      ...month.visits.map((r) => rowCells(r, "simple")),
+      ...withSpareRows(
+        month.visits.map((r) => rowCells(r, "simple")),
+        visitCols
+      ),
       [],
       ["Contatti Alternativi"],
       simpleHeaders("contatto"),
-      ...month.contacts.map((r) => rowCells(r, "simple")),
+      ...withSpareRows(
+        month.contacts.map((r) => rowCells(r, "simple")),
+        contactCols
+      ),
     ];
     return { name: month.label, rows };
   });
@@ -41,24 +59,33 @@ export function downloadProgramExcel(program: Program, people: Person[]) {
 
 /**
  * Word editabile (.docx OOXML nativo). Sempre senza colonne Stato e Calendario.
+ * Include righe vuote per aggiungere turni; titolo/mesi/date sono testo modificabile.
  */
 export function downloadProgramWord(program: Program, people: Person[]) {
   const tables = buildProgramTables(program, people);
+  const visitCols = simpleHeaders("visita").length;
+  const contactCols = simpleHeaders("contatto").length;
   const blob = buildDocxBlob({
     title: program.title,
-    subtitle: `${program.monthsLabel} — versione editabile (senza Stato e Calendario)`,
+    subtitle: `${program.monthsLabel} — modificabile: puoi cambiare date, mesi, nomi e aggiungere righe (senza Stato/Calendario)`,
     sections: tables.map((month) => ({
       heading: month.label,
       blocks: [
         {
           title: "Visite a Casa o in Struttura",
           headers: simpleHeaders("visita"),
-          rows: month.visits.map((r) => rowCells(r, "simple")),
+          rows: withSpareRows(
+            month.visits.map((r) => rowCells(r, "simple")),
+            visitCols
+          ),
         },
         {
           title: "Contatti Alternativi",
           headers: simpleHeaders("contatto"),
-          rows: month.contacts.map((r) => rowCells(r, "simple")),
+          rows: withSpareRows(
+            month.contacts.map((r) => rowCells(r, "simple")),
+            contactCols
+          ),
         },
       ],
     })),
