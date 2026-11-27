@@ -243,9 +243,4 @@ const STYLES_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
     <w:basedOn w:val="Normal"/>
     <w:qFormat/>
   </w:style>
-  <w:style w:type="table" w:styleId="TableGrid">
-    <w:name w:val="Table Grid"/>
-    <w:basedOn w:val="TableNormal"/>
-    <w:qFormat/>
-  </w:style>
 </w:styles>`;
