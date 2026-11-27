@@ -21,6 +21,7 @@ export default function ProgrammaPage() {
     data,
     activeProgram,
     setActiveProgram,
+    deleteProgram,
     upsertAssignment,
     deleteAssignment,
   } = useStore();
@@ -59,15 +60,16 @@ export default function ProgrammaPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {data.programs.length > 1 && (
+          {data.programs.length > 0 && (
             <select
               className="input !w-auto"
               value={activeProgram.id}
               onChange={(e) => setActiveProgram(e.target.value)}
+              aria-label="Seleziona programma"
             >
               {data.programs.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.monthsLabel}
+                  {p.monthsLabel || p.title}
                 </option>
               ))}
             </select>
@@ -78,6 +80,24 @@ export default function ProgrammaPage() {
             onClick={() => setPdfPreview(true)}
           >
             Anteprima / PDF
+          </button>
+          <button
+            type="button"
+            className="btn-ghost text-red-700"
+            onClick={() => {
+              const label =
+                activeProgram.monthsLabel || activeProgram.title;
+              if (
+                !confirm(
+                  `Eliminare il programma «${label}»? L'operazione non si può annullare.`
+                )
+              ) {
+                return;
+              }
+              deleteProgram(activeProgram.id);
+            }}
+          >
+            Elimina programma
           </button>
         </div>
       </div>

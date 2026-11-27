@@ -43,6 +43,7 @@ interface StoreValue {
   upsertPerson: (person: Person) => void;
   deletePerson: (id: string) => void;
   setActiveProgram: (id: string) => void;
+  deleteProgram: (id: string) => void;
   updateProgram: (id: string, patch: Partial<Program>) => void;
   upsertAssignment: (
     programId: string,
@@ -146,6 +147,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         persist({ ...d, people: d.people.filter((p) => p.id !== id) });
       },
       setActiveProgram: (id) => persist({ ...d, activeProgramId: id }),
+      deleteProgram: (id) => {
+        const remaining = d.programs.filter((p) => p.id !== id);
+        const nextActive =
+          d.activeProgramId === id
+            ? remaining[0]?.id ?? null
+            : d.activeProgramId;
+        persist({
+          ...d,
+          programs: remaining,
+          activeProgramId: nextActive,
+        });
+      },
       updateProgram: (id, patch) => {
         persist({
           ...d,
