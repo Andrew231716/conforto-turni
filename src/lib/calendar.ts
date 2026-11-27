@@ -26,7 +26,8 @@ export function recipientDisplayName(
 export function buildEventPayload(
   assignment: Assignment,
   week: WeekSlot,
-  people: Person[]
+  people: Person[],
+  timezone = "Europe/Rome"
 ): {
   title: string;
   start: string;
@@ -42,21 +43,22 @@ export function buildEventPayload(
   const isVisit = assignment.kind === "visita";
   const weeks = week.durationWeeks ?? 1;
   const periodWord = weeks >= 2 ? "Periodo" : "Settimana";
+  const statusNote = assignment.status ? ` Stato: ${assignment.status}.` : "";
 
   const title = isVisit
     ? `${periodWord} visita: ${dest}`
     : `${periodWord} contatto: ${dest}`;
 
   const description = isVisit
-    ? `${periodWord}: ${week.label}. Incaricati: ${assignees.join(", ")}. Tipo: ${assignment.visitType}. Evento per ricordare di organizzare e svolgere la visita durante i giorni indicati.`
-    : `${periodWord}: ${week.label}. Giovane incaricato/a: ${assignees.join(", ")}. Modalita: ${assignment.visitType}. Evento per ricordare di contattare la persona durante i giorni indicati.`;
+    ? `${periodWord}: ${week.label}. Incaricati: ${assignees.join(", ")}. Tipo: ${assignment.visitType}.${statusNote} Evento per ricordare di organizzare e svolgere la visita durante i giorni indicati.`
+    : `${periodWord}: ${week.label}. Giovane incaricato/a: ${assignees.join(", ")}. Modalita: ${assignment.visitType}.${statusNote} Evento per ricordare di contattare la persona durante i giorni indicati.`;
 
   return {
     title,
     start: assignment.appointment?.replace("T", " ") || `${week.startDate} 00:00`,
     duration: assignment.appointment ? 60 : slotDurationMinutes(week),
     description,
-    timezone: "Europe/Rome",
+    timezone: timezone || "Europe/Rome",
   };
 }
 

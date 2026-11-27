@@ -20,8 +20,14 @@ export function CalendarMenu({
   settings: AppSettings;
 }) {
   const payload = useMemo(
-    () => buildEventPayload(assignment, week, people),
-    [assignment, week, people]
+    () =>
+      buildEventPayload(
+        assignment,
+        week,
+        people,
+        settings.timezone || "Europe/Rome"
+      ),
+    [assignment, week, people, settings.timezone]
   );
 
   const ownHref = useMemo(() => {

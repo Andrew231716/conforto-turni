@@ -25,11 +25,12 @@ export function downloadProgramPdf(
 
   // Colonne bilanciate su A4 verticale (~186mm utili)
   const COLS = {
-    0: { cellWidth: 36 },
-    1: { cellWidth: 42 },
-    2: { cellWidth: 38 },
-    3: { cellWidth: 36 },
-    4: { cellWidth: 34 },
+    0: { cellWidth: 32 },
+    1: { cellWidth: 36 },
+    2: { cellWidth: 32 },
+    3: { cellWidth: 30 },
+    4: { cellWidth: 24 },
+    5: { cellWidth: 32 },
   };
 
   const groups = monthGroups(program.weeks);
@@ -93,6 +94,7 @@ export function downloadProgramPdf(
           "Giovani Incaricati",
           "Destinatario",
           "Tipo di Visita",
+          "Stato",
           "Calendario",
         ],
       ],
@@ -101,6 +103,7 @@ export function downloadProgramPdf(
         r.incarichi,
         r.dest,
         r.tipo,
+        r.stato,
         "Aggiungi al calendario",
       ]),
       styles: {
@@ -122,7 +125,7 @@ export function downloadProgramPdf(
       alternateRowStyles: { fillColor: [248, 251, 249] },
       columnStyles: COLS,
       didDrawCell: (data) => {
-        if (data.section !== "body" || data.column.index !== 4) return;
+        if (data.section !== "body" || data.column.index !== 5) return;
         const row = visitRows[data.row.index];
         if (!row?.url) return;
         doc.link(data.cell.x, data.cell.y, data.cell.width, data.cell.height, {
@@ -167,6 +170,7 @@ export function downloadProgramPdf(
           "Giovane",
           "Destinatario",
           "Tipo di Incoraggiamento",
+          "Stato",
           "Calendario",
         ],
       ],
@@ -175,6 +179,7 @@ export function downloadProgramPdf(
         r.incarichi,
         r.dest,
         r.tipo,
+        r.stato,
         "Aggiungi al calendario",
       ]),
       styles: {
@@ -196,7 +201,7 @@ export function downloadProgramPdf(
       alternateRowStyles: { fillColor: [248, 251, 249] },
       columnStyles: COLS,
       didDrawCell: (data) => {
-        if (data.section !== "body" || data.column.index !== 4) return;
+        if (data.section !== "body" || data.column.index !== 5) return;
         const row = contactRows[data.row.index];
         if (!row?.url) return;
         doc.link(data.cell.x, data.cell.y, data.cell.width, data.cell.height, {
@@ -219,7 +224,14 @@ function assignmentRow(
   origin: string
 ) {
   if (!a) {
-    return { data: label, incarichi: "—", dest: "—", tipo: "—", url: "" };
+    return {
+      data: label,
+      incarichi: "—",
+      dest: "—",
+      tipo: "—",
+      stato: "—",
+      url: "",
+    };
   }
   const week = program.weeks.find((w) => w.id === a.weekId)!;
   const recipient = people.find((p) => p.id === a.recipientId);
@@ -227,13 +239,19 @@ function assignmentRow(
     .map((id) => people.find((p) => p.id === id)?.name)
     .filter(Boolean)
     .join(", ");
-  const payload = buildEventPayload(a, week, people);
+  const payload = buildEventPayload(
+    a,
+    week,
+    people,
+    settings.timezone || "Europe/Rome"
+  );
   const url = buildCalendarLinkUrl(payload, settings, origin);
   return {
     data: label,
     incarichi: assignees,
     dest: recipientDisplayName(recipient),
     tipo: a.visitType,
+    stato: a.status ?? "Da confermare",
     url,
   };
 }

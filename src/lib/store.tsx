@@ -34,6 +34,7 @@ import {
   generateWeeks,
   generateWeeksFromManualPeriods,
 } from "./schedule";
+import { stripPersonFromPrograms } from "./validation";
 
 interface StoreValue {
   ready: boolean;
@@ -44,6 +45,8 @@ interface StoreValue {
   deletePerson: (id: string) => void;
   setActiveProgram: (id: string) => void;
   deleteProgram: (id: string) => void;
+  duplicateProgram: (id: string) => Program | null;
+  saveProgram: (program: Program) => void;
   updateProgram: (id: string, patch: Partial<Program>) => void;
   upsertAssignment: (
     programId: string,
@@ -144,7 +147,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         persist({ ...d, people });
       },
       deletePerson: (id) => {
-        persist({ ...d, people: d.people.filter((p) => p.id !== id) });
+        persist({
+          ...d,
+          people: d.people.filter((p) => p.id !== id),
+          programs: stripPersonFromPrograms(d.programs, id),
+        });
       },
       setActiveProgram: (id) => persist({ ...d, activeProgramId: id }),
       deleteProgram: (id) => {
@@ -157,6 +164,50 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           ...d,
           programs: remaining,
           activeProgramId: nextActive,
+        });
+      },
+      duplicateProgram: (id) => {
+        const src = d.programs.find((p) => p.id === id);
+        if (!src) return null;
+        const now = new Date().toISOString();
+        const weekIdMap = new Map(
+          src.weeks.map((w) => [w.id, nanoid(8)] as const)
+        );
+        const remap = (list: Assignment[]) =>
+          list.map((a) => ({
+            ...a,
+            id: nanoid(10),
+            weekId: weekIdMap.get(a.weekId) ?? a.weekId,
+          }));
+        const program: Program = {
+          ...src,
+          id: nanoid(12),
+          title: `${src.title} (copia)`,
+          monthsLabel: `${src.monthsLabel} (copia)`,
+          weeks: src.weeks.map((w) => ({
+            ...w,
+            id: weekIdMap.get(w.id)!,
+          })),
+          visits: remap(src.visits),
+          contacts: remap(src.contacts),
+          createdAt: now,
+          updatedAt: now,
+        };
+        persist({
+          ...d,
+          programs: [...d.programs, program],
+          activeProgramId: program.id,
+        });
+        return program;
+      },
+      saveProgram: (program) => {
+        const exists = d.programs.some((p) => p.id === program.id);
+        persist({
+          ...d,
+          programs: exists
+            ? d.programs.map((p) => (p.id === program.id ? program : p))
+            : [...d.programs, program],
+          activeProgramId: program.id,
         });
       },
       updateProgram: (id, patch) => {
@@ -232,11 +283,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           createdAt: now,
           updatedAt: now,
         };
-        if (!opts.preview) persist({
-          ...d,
-          programs: [...d.programs, program],
-          activeProgramId: program.id,
-        });
+        if (!opts.preview) {
+          persist({
+            ...d,
+            programs: [...d.programs, program],
+            activeProgramId: program.id,
+          });
+        }
         return { program, warnings };
       },
       regenerateAssignments: (programId, rules, extra) => {
@@ -258,24 +311,42 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const existing = [...program.visits, ...program.contacts];
         if (extra?.weekId && !extra.onlyMissing) {
           const weekId = extra.weekId;
-          if ((program.visits.some((item) => item.weekId === weekId) && !visits.some((item) => item.weekId === weekId)) ||
-              (program.contacts.some((item) => item.weekId === weekId) && !contacts.some((item) => item.weekId === weekId))) {
-            return ["Settimana conservata: il generatore non ha trovato una sostituzione per tutti gli incarichi esistenti.", ...warnings];
+          if (
+            (program.visits.some((item) => item.weekId === weekId) &&
+              !visits.some((item) => item.weekId === weekId)) ||
+            (program.contacts.some((item) => item.weekId === weekId) &&
+              !contacts.some((item) => item.weekId === weekId))
+          ) {
+            return [
+              "Settimana conservata: il generatore non ha trovato una sostituzione per tutti gli incarichi esistenti.",
+              ...warnings,
+            ];
           }
         }
-        const compatible = (assignment: Assignment) => !usedRules.noDoubleDutySameWeek ||
-          !existing.some((item) => item.weekId === assignment.weekId &&
-            item.assigneeIds.some((id) => assignment.assigneeIds.includes(id)));
+        const compatible = (assignment: Assignment) =>
+          !usedRules.noDoubleDutySameWeek ||
+          !existing.some(
+            (item) =>
+              item.weekId === assignment.weekId &&
+              item.assigneeIds.some((id) => assignment.assigneeIds.includes(id))
+          );
         const fill = (saved: Assignment[], proposed: Assignment[]) => [
           ...saved,
-          ...proposed.filter((item) => !saved.some((current) => current.weekId === item.weekId) && compatible(item)),
+          ...proposed.filter(
+            (item) =>
+              !saved.some((current) => current.weekId === item.weekId) &&
+              compatible(item)
+          ),
         ];
         const apply = (saved: Assignment[], proposed: Assignment[]) => {
           const weekId = extra?.weekId;
           if (weekId) {
             const selected = proposed.filter((item) => item.weekId === weekId);
-            return extra?.onlyMissing ? fill(saved, selected) :
-              selected.length ? [...saved.filter((item) => item.weekId !== weekId), ...selected] : saved;
+            return extra?.onlyMissing
+              ? fill(saved, selected)
+              : selected.length
+                ? [...saved.filter((item) => item.weekId !== weekId), ...selected]
+                : saved;
           }
           return extra?.onlyMissing ? fill(saved, proposed) : proposed;
         };

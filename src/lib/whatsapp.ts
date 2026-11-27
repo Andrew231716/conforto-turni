@@ -22,6 +22,18 @@ export function normalizePhone(
   return digits;
 }
 
+/** Validazione soft per UI: true se il numero sembra utilizzabile */
+export function isValidPhoneInput(
+  phone: string | undefined,
+  defaultCountryCode = "39"
+): boolean {
+  if (!phone?.trim()) return true; // vuoto = ok (opzionale)
+  const digits = normalizePhone(phone, defaultCountryCode);
+  if (!digits) return false;
+  // IT mobile tipico: 39 + 9/10 cifre → 11–12; internazionali un po' più lunghi
+  return digits.length >= 10 && digits.length <= 15;
+}
+
 export function whatsappUrl(phoneDigits: string, text: string): string {
   return `https://wa.me/${phoneDigits}?text=${encodeURIComponent(text)}`;
 }

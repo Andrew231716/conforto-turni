@@ -1,12 +1,24 @@
 "use client";
 
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { useStore } from "@/lib/store";
 
 export default function ImpostazioniPage() {
-  const { ready, data, setSettings, exportJson, importJson, resetSeed } =
-    useStore();
+  const {
+    ready,
+    data,
+    setSettings,
+    exportJson,
+    importJson,
+    resetSeed,
+    setActiveProgram,
+    deleteProgram,
+    duplicateProgram,
+    updateProgram,
+  } = useStore();
   const fileRef = useRef<HTMLInputElement>(null);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
 
   if (!ready) return <p>Caricamento…</p>;
 
@@ -54,11 +66,27 @@ export default function ImpostazioniPage() {
         )}
         <label className="grid gap-1">
           <span className="label">Timezone</span>
-          <input
+          <select
             className="input"
             value={data.settings.timezone}
             onChange={(e) => setSettings({ timezone: e.target.value })}
-          />
+          >
+            {[
+              "Europe/Rome",
+              "Europe/Zurich",
+              "Europe/Paris",
+              "Europe/Berlin",
+              "Europe/London",
+              "UTC",
+            ].map((tz) => (
+              <option key={tz} value={tz}>
+                {tz}
+              </option>
+            ))}
+          </select>
+          <span className="text-xs text-[var(--muted)]">
+            Usata nei link calendario e nei file .ics.
+          </span>
         </label>
         <label className="grid gap-1">
           <span className="label">Prefisso paese WhatsApp</span>
@@ -66,10 +94,123 @@ export default function ImpostazioniPage() {
             className="input"
             value={data.settings.defaultCountryCode}
             onChange={(e) =>
-              setSettings({ defaultCountryCode: e.target.value.replace(/\D/g, "") })
+              setSettings({
+                defaultCountryCode: e.target.value.replace(/\D/g, ""),
+              })
             }
           />
         </label>
+      </div>
+
+      <div className="panel space-y-3">
+        <h2 className="font-display text-lg">Programmi salvati</h2>
+        {data.programs.length === 0 ? (
+          <p className="text-sm text-[var(--muted)]">Nessun programma.</p>
+        ) : (
+          <ul className="divide-y divide-[var(--line)] rounded-lg border border-[var(--line)]">
+            {data.programs.map((p) => (
+              <li
+                key={p.id}
+                className="flex flex-col gap-2 px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div className="min-w-0">
+                  {renamingId === p.id ? (
+                    <input
+                      className="input"
+                      value={renameValue}
+                      onChange={(e) => setRenameValue(e.target.value)}
+                      aria-label="Nuovo nome programma"
+                    />
+                  ) : (
+                    <>
+                      <div className="font-medium">
+                        {p.monthsLabel || p.title}
+                        {p.id === data.activeProgramId && (
+                          <span className="ml-2 text-xs text-[var(--teal)]">
+                            (attivo)
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-xs text-[var(--muted)]">
+                        {p.title} · {p.weeks.length} periodi
+                      </div>
+                    </>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  {renamingId === p.id ? (
+                    <>
+                      <button
+                        type="button"
+                        className="btn-primary !px-2 !py-1 text-xs"
+                        onClick={() => {
+                          const label = renameValue.trim();
+                          if (!label) return;
+                          updateProgram(p.id, { monthsLabel: label });
+                          setRenamingId(null);
+                        }}
+                      >
+                        OK
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-ghost !px-2 !py-1 text-xs"
+                        onClick={() => setRenamingId(null)}
+                      >
+                        Annulla
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        className="btn-ghost !px-2 !py-1 text-xs"
+                        onClick={() => setActiveProgram(p.id)}
+                        disabled={p.id === data.activeProgramId}
+                      >
+                        Attiva
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-ghost !px-2 !py-1 text-xs"
+                        onClick={() => {
+                          setRenamingId(p.id);
+                          setRenameValue(p.monthsLabel || p.title);
+                        }}
+                      >
+                        Rinomina
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-ghost !px-2 !py-1 text-xs"
+                        onClick={() => {
+                          duplicateProgram(p.id);
+                        }}
+                      >
+                        Duplica
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-ghost !px-2 !py-1 text-xs text-red-700"
+                        onClick={() => {
+                          if (
+                            confirm(
+                              `Eliminare «${p.monthsLabel || p.title}»?`
+                            )
+                          ) {
+                            deleteProgram(p.id);
+                          }
+                        }}
+                      >
+                        Elimina
+                      </button>
+                    </>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
       <div className="panel space-y-3">

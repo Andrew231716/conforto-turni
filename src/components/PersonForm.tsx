@@ -7,6 +7,7 @@ import {
   DEFAULT_DUTIES_DESTINATARIO,
   DEFAULT_DUTIES_GIOVANE,
 } from "@/lib/types";
+import { isValidPhoneInput } from "@/lib/whatsapp";
 
 const empty = (): Person => ({
   id: nanoid(10),
@@ -53,6 +54,12 @@ export function PersonForm({
         if (!form.name.trim()) return;
         if (form.unavailableFrom && form.unavailableUntil && form.unavailableFrom > form.unavailableUntil) {
           alert("La fine dell’indisponibilità deve seguire l’inizio.");
+          return;
+        }
+        if (!isValidPhoneInput(form.phone)) {
+          alert(
+            "Numero non valido. Usa un cellulare italiano (es. 3331234567) o internazionale con prefisso."
+          );
           return;
         }
         onSave({ ...form, name: form.name.trim(), phone: form.phone?.trim() });
@@ -108,7 +115,17 @@ export function PersonForm({
           placeholder="3331234567 oppure +39…"
           value={form.phone ?? ""}
           onChange={(e) => setForm({ ...form, phone: e.target.value })}
+          aria-invalid={
+            form.phone?.trim() && !isValidPhoneInput(form.phone)
+              ? true
+              : undefined
+          }
         />
+        {form.phone?.trim() && !isValidPhoneInput(form.phone) && (
+          <span className="text-xs text-red-700">
+            Formato non riconosciuto (es. 3331234567 o +393331234567).
+          </span>
+        )}
       </label>
       <label className="grid gap-1 sm:col-span-2">
         <span className="label">Note</span>

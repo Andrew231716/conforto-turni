@@ -7,8 +7,11 @@ import {
   buildCalendarLinkUrl,
   buildEventPayload,
 } from "@/lib/calendar";
-import { buildAssignmentMessage } from "@/lib/whatsapp";
-import type { WhatsAppTemplates } from "@/lib/types";
+import {
+  buildAssignmentMessage,
+  openWhatsAppForPerson,
+} from "@/lib/whatsapp";
+import type { Person, WhatsAppTemplates } from "@/lib/types";
 
 export default function WhatsAppPage() {
   const { ready, data, activeProgram, updateWhatsAppTemplates } = useStore();
@@ -24,7 +27,12 @@ export default function WhatsAppPage() {
     if (!assignment) return "Nessun turno per l'anteprima.";
     const week = activeProgram.weeks.find((w) => w.id === assignment.weekId);
     if (!week) return "";
-    const payload = buildEventPayload(assignment, week, data.people);
+    const payload = buildEventPayload(
+      assignment,
+      week,
+      data.people,
+      data.settings.timezone
+    );
     const link =
       typeof window !== "undefined"
         ? buildCalendarLinkUrl(payload, data.settings, window.location.origin)
@@ -39,7 +47,13 @@ export default function WhatsAppPage() {
       link,
       personId
     );
-  }, [activeProgram, effective, data.people, data.settings, previewPersonId]);
+  }, [
+    activeProgram,
+    effective,
+    data.people,
+    data.settings,
+    previewPersonId,
+  ]);
 
   if (!ready) return <p>Caricamento…</p>;
   if (!activeProgram || !effective) {
@@ -47,6 +61,78 @@ export default function WhatsAppPage() {
   }
 
   const giovani = data.people.filter((p) => p.role === "giovane");
+
+  const buildAllTurnsMessage = (g: Person) => {
+    const turns = [
+      ...activeProgram.visits.filter((v) => v.assigneeIds.includes(g.id)),
+      ...activeProgram.contacts.filter((v) => v.assigneeIds.includes(g.id)),
+    ].sort((a, b) => {
+      const wa = activeProgram.weeks.find((w) => w.id === a.weekId)?.startDate ?? "";
+      const wb = activeProgram.weeks.find((w) => w.id === b.weekId)?.startDate ?? "";
+      return wa.localeCompare(wb);
+    });
+    if (!turns.length) return `Ciao ${g.name}! Non hai turni in questo programma.`;
+    const lines = turns.map((a) => {
+      const week = activeProgram.weeks.find((w) => w.id === a.weekId);
+      if (!week) return "";
+      const payload = buildEventPayload(
+        a,
+        week,
+        data.people,
+        data.settings.timezone
+      );
+      const link =
+        typeof window !== "undefined"
+          ? buildCalendarLinkUrl(
+              payload,
+              data.settings,
+              window.location.origin
+            )
+          : "";
+      return buildAssignmentMessage(
+        a.kind === "visita" ? "visita" : "contatto",
+        activeProgram.whatsappTemplates,
+        a,
+        week,
+        data.people,
+        link,
+        g.id
+      );
+    });
+    return lines.filter(Boolean).join("\n\n———\n\n");
+  };
+
+  const sendAllWithPhones = () => {
+    const withPhone = giovani.filter((g) => g.phone?.trim());
+    if (!withPhone.length) {
+      alert("Nessun giovane ha un numero salvato.");
+      return;
+    }
+    if (
+      !confirm(
+        `Aprire WhatsApp per ${withPhone.length} giovani (tutti i loro turni)? Uno alla volta.`
+      )
+    ) {
+      return;
+    }
+    for (let i = 0; i < withPhone.length; i++) {
+      const g = withPhone[i];
+      const message = buildAllTurnsMessage(g);
+      const result = openWhatsAppForPerson(
+        g,
+        message,
+        data.settings.defaultCountryCode
+      );
+      if (!result.ok) {
+        alert(result.reason);
+        continue;
+      }
+      window.open(result.url, "_blank", "noopener,noreferrer");
+      if (i < withPhone.length - 1) {
+        if (!confirm(`Aperto WA per ${g.name}. Continuare?`)) break;
+      }
+    }
+  };
 
   return (
     <div className="w-full min-w-0 space-y-6">
@@ -124,8 +210,13 @@ export default function WhatsAppPage() {
         </div>
       </div>
 
-      <div className="panel w-full min-w-0">
-        <h2 className="font-display mb-3 text-lg">Invio rapido per giovane</h2>
+      <div className="panel w-full min-w-0 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="font-display text-lg">Invio per giovane</h2>
+          <button type="button" className="btn-wa" onClick={sendAllWithPhones}>
+            Invia a tutti (tutti i turni)
+          </button>
+        </div>
         <ul className="divide-y divide-[var(--line)] rounded-lg border border-[var(--line)]">
           {giovani.map((g) => {
             const turns = [
@@ -136,13 +227,19 @@ export default function WhatsAppPage() {
                 v.assigneeIds.includes(g.id)
               ),
             ];
+            const allMsg = buildAllTurnsMessage(g);
             const first = turns[0];
             const week = first
               ? activeProgram.weeks.find((w) => w.id === first.weekId)
               : null;
-            let message = `Ciao ${g.name}!`;
+            let firstMsg = `Ciao ${g.name}!`;
             if (first && week) {
-              const payload = buildEventPayload(first, week, data.people);
+              const payload = buildEventPayload(
+                first,
+                week,
+                data.people,
+                data.settings.timezone
+              );
               const link =
                 typeof window !== "undefined"
                   ? buildCalendarLinkUrl(
@@ -151,7 +248,7 @@ export default function WhatsAppPage() {
                       window.location.origin
                     )
                   : "";
-              message = buildAssignmentMessage(
+              firstMsg = buildAssignmentMessage(
                 first.kind === "visita" ? "visita" : "contatto",
                 activeProgram.whatsappTemplates,
                 first,
@@ -169,27 +266,35 @@ export default function WhatsAppPage() {
                 <div className="min-w-0">
                   <div className="font-medium">{g.name}</div>
                   <div className="mt-0.5 text-xs text-[var(--muted)]">
-                    <span className="font-mono">{g.phone || "Nessun telefono"}</span>
+                    <span className="font-mono">
+                      {g.phone || "Nessun telefono"}
+                    </span>
                     {" · "}
                     {turns.length} turni
                   </div>
                 </div>
-                <div className="shrink-0">
+                <div className="flex shrink-0 flex-wrap gap-2">
                   <WhatsAppButton
                     person={g}
-                    message={message}
+                    message={firstMsg}
                     countryCode={data.settings.defaultCountryCode}
-                    label={first ? "Invia turno" : "Messaggio"}
+                    label={first ? "Primo turno" : "Messaggio"}
+                  />
+                  <WhatsAppButton
+                    person={g}
+                    message={allMsg}
+                    countryCode={data.settings.defaultCountryCode}
+                    label="Tutti i turni"
+                    className="btn-ghost"
                   />
                 </div>
               </li>
             );
           })}
         </ul>
-        <p className="mt-3 text-xs text-[var(--muted)]">
-          Per ogni turno singolo usa i pulsanti WA nella pagina Programma: lì il
-          messaggio include destinatario, settimana e link calendario di quel
-          turno.
+        <p className="text-xs text-[var(--muted)]">
+          Per un singolo turno usa i pulsanti WA nella pagina Programma. Da lì
+          puoi anche inviare a tutti gli incaricati di una settimana.
         </p>
       </div>
     </div>
