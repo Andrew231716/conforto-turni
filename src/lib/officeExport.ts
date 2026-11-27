@@ -7,6 +7,7 @@ import {
   simpleHeaders,
   type ProgramTableRow,
 } from "./programTables";
+import { buildXlsxBlob } from "./xlsxExport";
 
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
@@ -17,101 +18,33 @@ function downloadBlob(blob: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-function xmlEscape(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-function sheetRowsXml(headers: string[], rows: ProgramTableRow[]): string {
-  const head = `<Row>${headers
-    .map(
-      (h) =>
-        `<Cell ss:StyleID="Header"><Data ss:Type="String">${xmlEscape(h)}</Data></Cell>`
-    )
-    .join("")}</Row>`;
-  const body = rows
-    .map((r) => {
-      const cells = rowCells(r, "simple")
-        .map(
-          (c) =>
-            `<Cell><Data ss:Type="String">${xmlEscape(c)}</Data></Cell>`
-        )
-        .join("");
-      return `<Row>${cells}</Row>`;
-    })
-    .join("");
-  return head + body;
-}
-
 /**
- * Excel editabile (SpreadsheetML 2003, apre in Excel / LibreOffice / Google Sheets).
+ * Excel editabile (.xlsx OOXML, apre in Microsoft Excel / LibreOffice / Google Sheets).
  * Sempre senza colonne Stato e Calendario.
  */
 export function downloadProgramExcel(program: Program, people: Person[]) {
   const tables = buildProgramTables(program, people);
-  const sheets = tables
-    .map((month, i) => {
-      const name = sanitizeSheetName(month.label, i);
-      const visits = sheetRowsXml(simpleHeaders("visita"), month.visits);
-      const contacts = sheetRowsXml(simpleHeaders("contatto"), month.contacts);
-      return `
-  <Worksheet ss:Name="${xmlEscape(name)}">
-   <Table>
-    <Column ss:Width="120"/>
-    <Column ss:Width="140"/>
-    <Column ss:Width="130"/>
-    <Column ss:Width="150"/>
-    <Row><Cell ss:StyleID="Title"><Data ss:Type="String">${xmlEscape(program.title)}</Data></Cell></Row>
-    <Row><Cell><Data ss:Type="String">${xmlEscape(program.monthsLabel)} — ${xmlEscape(month.label)}</Data></Cell></Row>
-    <Row></Row>
-    <Row><Cell ss:StyleID="Section"><Data ss:Type="String">Visite a Casa o in Struttura</Data></Cell></Row>
-    ${visits}
-    <Row></Row>
-    <Row><Cell ss:StyleID="Section"><Data ss:Type="String">Contatti Alternativi</Data></Cell></Row>
-    ${contacts}
-   </Table>
-  </Worksheet>`;
-    })
-    .join("\n");
-
-  const xml = `<?xml version="1.0"?>
-<?mso-application progid="Excel.Sheet"?>
-<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
- xmlns:o="urn:schemas-microsoft-com:office:office"
- xmlns:x="urn:schemas-microsoft-com:office:excel"
- xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
- xmlns:html="http://www.w3.org/TR/REC-html40">
- <Styles>
-  <Style ss:ID="Header">
-   <Font ss:Bold="1" ss:Color="#FFFFFF"/>
-   <Interior ss:Color="#1E5A78" ss:Pattern="Solid"/>
-  </Style>
-  <Style ss:ID="Title">
-   <Font ss:Bold="1" ss:Size="14"/>
-  </Style>
-  <Style ss:ID="Section">
-   <Font ss:Bold="1" ss:Size="11"/>
-   <Interior ss:Color="#E8F2EF" ss:Pattern="Solid"/>
-  </Style>
- </Styles>
- ${sheets}
-</Workbook>`;
-
-  const blob = new Blob([xml], {
-    type: "application/vnd.ms-excel;charset=utf-8",
+  const sheets = tables.map((month) => {
+    const rows: string[][] = [
+      [program.title],
+      [`${program.monthsLabel} — ${month.label}`],
+      [],
+      ["Visite a Casa o in Struttura"],
+      simpleHeaders("visita"),
+      ...month.visits.map((r) => rowCells(r, "simple")),
+      [],
+      ["Contatti Alternativi"],
+      simpleHeaders("contatto"),
+      ...month.contacts.map((r) => rowCells(r, "simple")),
+    ];
+    return { name: month.label, rows };
   });
+
+  const blob = buildXlsxBlob(sheets);
   downloadBlob(
     blob,
-    `programma_${programFilenameSlug(program)}_editabile.xls`
+    `programma_${programFilenameSlug(program)}_editabile.xlsx`
   );
-}
-
-function sanitizeSheetName(label: string, index: number): string {
-  const cleaned = label.replace(/[\\/*?:\[\]]/g, " ").trim().slice(0, 28);
-  return cleaned || `Mese ${index + 1}`;
 }
 
 /**

@@ -75,9 +75,9 @@ export function PdfPreviewModal({
             Versioni senza Stato e Calendario
           </div>
           <p className="text-xs text-[var(--muted)]">
-            PDF editabile: campi Note compilabili. Excel e Word: modificabili in
-            Office / LibreOffice / Google. PDF da inviare: solo lettura, ideale
-            per WhatsApp.
+            PDF editabile: campi Note compilabili. Excel (.xlsx) e Word (.docx):
+            modificabili in Microsoft Office / LibreOffice / Google. PDF da
+            inviare: solo lettura, ideale per WhatsApp.
           </p>
           <div className="flex flex-wrap gap-2">
             <button
