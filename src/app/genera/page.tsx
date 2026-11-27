@@ -15,6 +15,7 @@ import {
   formatWeekLabel,
   sortDestinatari,
 } from "@/lib/schedule";
+import { generationBlockers } from "@/lib/validation";
 import { parseISO } from "date-fns";
 
 export default function GeneraPage() {
@@ -24,7 +25,7 @@ export default function GeneraPage() {
     createProgramFromGenerator,
     regenerateAssignments,
     activeProgram,
-    importJson,
+    saveProgram,
   } = useStore();
   const router = useRouter();
   const [title, setTitle] = useState("Programma di Visite e Incoraggiamento");
@@ -410,6 +411,21 @@ export default function GeneraPage() {
                 return;
               }
             }
+            const blockers = generationBlockers(data.people);
+            const hard = blockers.filter((b) => !b.startsWith("Numeri WhatsApp"));
+            const soft = blockers.filter((b) => b.startsWith("Numeri WhatsApp"));
+            if (hard.length) {
+              alert(`Non posso generare:\n${hard.join("\n")}`);
+              return;
+            }
+            if (
+              soft.length &&
+              !confirm(
+                `${soft.join("\n")}\n\nGenerare comunque? (WhatsApp non funzionerà per chi non ha numero)`
+              )
+            ) {
+              return;
+            }
             const { warnings: w, program } = createProgramFromGenerator({
               preview: true,
               title,
@@ -489,7 +505,7 @@ export default function GeneraPage() {
             })}
           </ul>
           <button type="button" className="btn-primary" onClick={() => {
-            importJson(JSON.stringify({ ...data, programs: [...data.programs, preview], activeProgramId: preview.id }));
+            saveProgram(preview);
             router.push("/programma");
           }}>Salva questo programma</button>
           <button type="button" className="btn-ghost" onClick={() => setPreview(null)}>Chiudi anteprima</button>

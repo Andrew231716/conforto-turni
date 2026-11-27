@@ -1,4 +1,3 @@
-import { nanoid } from "nanoid";
 import type { AppData, Assignment, Person, PersonDuties, Program, WeekSlot } from "./types";
 import {
   DEFAULT_DUTIES_DESTINATARIO,
@@ -7,6 +6,17 @@ import {
   DEFAULT_SETTINGS,
   DEFAULT_WHATSAPP,
 } from "./types";
+
+/** ID stabili: ripristino seed non rompe i backup che già usano questi id */
+function slugId(prefix: string, name: string): string {
+  const slug = name
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+  return `${prefix}-${slug}`;
+}
 
 function p(
   name: string,
@@ -21,8 +31,9 @@ function p(
       : { ...DEFAULT_DUTIES_DESTINATARIO });
   const rest = { ...extra };
   delete rest.duties;
+  delete rest.id;
   return {
-    id: nanoid(10),
+    id: extra.id ?? slugId(role === "giovane" ? "g" : "d", name),
     name,
     gender,
     role,
@@ -96,18 +107,19 @@ function byName(people: Person[], name: string): string {
   return found.id;
 }
 
-function week(start: string, end: string, label: string): WeekSlot {
-  return { id: nanoid(8), startDate: start, endDate: end, label };
+function week(key: string, start: string, end: string, label: string): WeekSlot {
+  return { id: `w-${key}`, startDate: start, endDate: end, label };
 }
 
 function visita(
+  id: string,
   weekId: string,
   assignees: string[],
   recipientId: string,
   visitType: "Visita a casa" | "Visita in struttura"
 ): Assignment {
   return {
-    id: nanoid(10),
+    id,
     weekId,
     kind: "visita",
     assigneeIds: assignees,
@@ -117,12 +129,13 @@ function visita(
 }
 
 function contatto(
+  id: string,
   weekId: string,
   assigneeId: string,
   recipientId: string
 ): Assignment {
   return {
-    id: nanoid(10),
+    id,
     weekId,
     kind: "contatto",
     assigneeIds: [assigneeId],
@@ -133,26 +146,26 @@ function contatto(
 
 export function createSeedProgram(people: Person[]): Program {
   const w = {
-    s1: week("2026-08-31", "2026-09-06", "31 agosto - 6 settembre"),
-    s2: week("2026-09-07", "2026-09-13", "7-13 settembre"),
-    s3: week("2026-09-14", "2026-09-20", "14-20 settembre"),
-    s4: week("2026-09-21", "2026-09-27", "21-27 settembre"),
-    o1: week("2026-09-28", "2026-10-04", "28 settembre - 4 ottobre"),
-    o2: week("2026-10-05", "2026-10-11", "5-11 ottobre"),
-    o3: week("2026-10-12", "2026-10-18", "12-18 ottobre"),
-    o4: week("2026-10-19", "2026-10-25", "19-25 ottobre"),
-    n1: week("2026-10-26", "2026-11-01", "26 ottobre - 1 novembre"),
-    n2: week("2026-11-02", "2026-11-08", "2-8 novembre"),
-    n3: week("2026-11-09", "2026-11-15", "9-15 novembre"),
-    n4: week("2026-11-16", "2026-11-22", "16-22 novembre"),
-    n5: week("2026-11-23", "2026-11-29", "23-29 novembre"),
+    s1: week("s1", "2026-08-31", "2026-09-06", "31 agosto - 6 settembre"),
+    s2: week("s2", "2026-09-07", "2026-09-13", "7-13 settembre"),
+    s3: week("s3", "2026-09-14", "2026-09-20", "14-20 settembre"),
+    s4: week("s4", "2026-09-21", "2026-09-27", "21-27 settembre"),
+    o1: week("o1", "2026-09-28", "2026-10-04", "28 settembre - 4 ottobre"),
+    o2: week("o2", "2026-10-05", "2026-10-11", "5-11 ottobre"),
+    o3: week("o3", "2026-10-12", "2026-10-18", "12-18 ottobre"),
+    o4: week("o4", "2026-10-19", "2026-10-25", "19-25 ottobre"),
+    n1: week("n1", "2026-10-26", "2026-11-01", "26 ottobre - 1 novembre"),
+    n2: week("n2", "2026-11-02", "2026-11-08", "2-8 novembre"),
+    n3: week("n3", "2026-11-09", "2026-11-15", "9-15 novembre"),
+    n4: week("n4", "2026-11-16", "2026-11-22", "16-22 novembre"),
+    n5: week("n5", "2026-11-23", "2026-11-29", "23-29 novembre"),
   };
 
   const id = (n: string) => byName(people, n);
-  const now = new Date().toISOString();
+  const now = "2026-08-01T00:00:00.000Z";
 
   return {
-    id: nanoid(12),
+    id: "prog-seed-set-ott-nov-2026",
     title: "Programma di Visite e Incoraggiamento",
     monthsLabel: "Settembre - Ottobre - Novembre 2026",
     weeks: Object.values(w),
@@ -161,34 +174,34 @@ export function createSeedProgram(people: Person[]): Program {
     createdAt: now,
     updatedAt: now,
     visits: [
-      visita(w.s1.id, [id("Andrea Petrelli"), id("Maurizio Prota")], id("Lorenzo Russo"), "Visita in struttura"),
-      visita(w.s2.id, [id("Valeria Gandini"), id("Ilaria Marras")], id("Monopoli Lucia"), "Visita a casa"),
-      visita(w.s3.id, [id("Serena Prota"), id("Ilaria Marras")], id("Streparola Teresa"), "Visita a casa"),
-      visita(w.s4.id, [id("Andrea Petrelli"), id("Andrea Pozzi")], id("Nesci Adelina"), "Visita a casa"),
-      visita(w.o1.id, [id("Ilaria Marras"), id("Serena Prota")], id("De Rinaldis Ornella"), "Visita a casa"),
-      visita(w.o2.id, [id("Andrea Petrelli"), id("Maurizio Prota")], id("Coniugi Calabrese"), "Visita a casa"),
-      visita(w.o3.id, [id("Valeria Gandini"), id("Serena Prota")], id("Germanò Angela"), "Visita a casa"),
-      visita(w.o4.id, [id("Ilaria Marras"), id("Valeria Gandini")], id("De Lisi Anna Maria"), "Visita a casa"),
-      visita(w.n1.id, [id("Andrea Pozzi"), id("Maurizio Prota")], id("Leccardi Fiorella"), "Visita a casa"),
-      visita(w.n2.id, [id("Valeria Gandini"), id("Ilaria Marras")], id("Angela Suzzani"), "Visita in struttura"),
-      visita(w.n3.id, [id("Andrea Pozzi"), id("Maurizio Prota")], id("Lorenzo Russo"), "Visita in struttura"),
-      visita(w.n4.id, [id("Serena Prota"), id("Valeria Gandini")], id("Monopoli Lucia"), "Visita a casa"),
-      visita(w.n5.id, [id("Ilaria Marras"), id("Serena Prota")], id("Streparola Teresa"), "Visita a casa"),
+      visita("v-s1", w.s1.id, [id("Andrea Petrelli"), id("Maurizio Prota")], id("Lorenzo Russo"), "Visita in struttura"),
+      visita("v-s2", w.s2.id, [id("Valeria Gandini"), id("Ilaria Marras")], id("Monopoli Lucia"), "Visita a casa"),
+      visita("v-s3", w.s3.id, [id("Serena Prota"), id("Ilaria Marras")], id("Streparola Teresa"), "Visita a casa"),
+      visita("v-s4", w.s4.id, [id("Andrea Petrelli"), id("Andrea Pozzi")], id("Nesci Adelina"), "Visita a casa"),
+      visita("v-o1", w.o1.id, [id("Ilaria Marras"), id("Serena Prota")], id("De Rinaldis Ornella"), "Visita a casa"),
+      visita("v-o2", w.o2.id, [id("Andrea Petrelli"), id("Maurizio Prota")], id("Coniugi Calabrese"), "Visita a casa"),
+      visita("v-o3", w.o3.id, [id("Valeria Gandini"), id("Serena Prota")], id("Germanò Angela"), "Visita a casa"),
+      visita("v-o4", w.o4.id, [id("Ilaria Marras"), id("Valeria Gandini")], id("De Lisi Anna Maria"), "Visita a casa"),
+      visita("v-n1", w.n1.id, [id("Andrea Pozzi"), id("Maurizio Prota")], id("Leccardi Fiorella"), "Visita a casa"),
+      visita("v-n2", w.n2.id, [id("Valeria Gandini"), id("Ilaria Marras")], id("Angela Suzzani"), "Visita in struttura"),
+      visita("v-n3", w.n3.id, [id("Andrea Pozzi"), id("Maurizio Prota")], id("Lorenzo Russo"), "Visita in struttura"),
+      visita("v-n4", w.n4.id, [id("Serena Prota"), id("Valeria Gandini")], id("Monopoli Lucia"), "Visita a casa"),
+      visita("v-n5", w.n5.id, [id("Ilaria Marras"), id("Serena Prota")], id("Streparola Teresa"), "Visita a casa"),
     ],
     contacts: [
-      contatto(w.s1.id, id("Alice Petrelli"), id("De Rinaldis Ornella")),
-      contatto(w.s2.id, id("Emma Battaglia"), id("Cristini Giuliana")),
-      contatto(w.s3.id, id("Francesca Calvio"), id("Lapenna Antonietta")),
-      contatto(w.s4.id, id("Maurizio Prota"), id("Bettera Carmen")),
-      contatto(w.o1.id, id("Serena Prota"), id("Vignola Rosanna")),
-      contatto(w.o2.id, id("Francesca Calvio"), id("Belivacqua Michelina")),
-      contatto(w.o3.id, id("Alice Petrelli"), id("La Gona Lina")),
-      contatto(w.o4.id, id("Emma Battaglia"), id("Battiato Stella")),
-      contatto(w.n1.id, id("Alice Petrelli"), id("Cristini Giuliana")),
-      contatto(w.n2.id, id("Emma Battaglia"), id("Lapenna Antonietta")),
-      contatto(w.n3.id, id("Francesca Calvio"), id("Bettera Carmen")),
-      contatto(w.n4.id, id("Serena Prota"), id("Vignola Rosanna")),
-      contatto(w.n5.id, id("Maurizio Prota"), id("De Rinaldis Ornella")),
+      contatto("c-s1", w.s1.id, id("Alice Petrelli"), id("De Rinaldis Ornella")),
+      contatto("c-s2", w.s2.id, id("Emma Battaglia"), id("Cristini Giuliana")),
+      contatto("c-s3", w.s3.id, id("Francesca Calvio"), id("Lapenna Antonietta")),
+      contatto("c-s4", w.s4.id, id("Maurizio Prota"), id("Bettera Carmen")),
+      contatto("c-o1", w.o1.id, id("Serena Prota"), id("Vignola Rosanna")),
+      contatto("c-o2", w.o2.id, id("Francesca Calvio"), id("Belivacqua Michelina")),
+      contatto("c-o3", w.o3.id, id("Alice Petrelli"), id("La Gona Lina")),
+      contatto("c-o4", w.o4.id, id("Emma Battaglia"), id("Battiato Stella")),
+      contatto("c-n1", w.n1.id, id("Alice Petrelli"), id("Cristini Giuliana")),
+      contatto("c-n2", w.n2.id, id("Emma Battaglia"), id("Lapenna Antonietta")),
+      contatto("c-n3", w.n3.id, id("Francesca Calvio"), id("Bettera Carmen")),
+      contatto("c-n4", w.n4.id, id("Serena Prota"), id("Vignola Rosanna")),
+      contatto("c-n5", w.n5.id, id("Maurizio Prota"), id("De Rinaldis Ornella")),
     ],
   };
 }
