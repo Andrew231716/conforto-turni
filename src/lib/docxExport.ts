@@ -1,4 +1,5 @@
 import { strToU8, zipSync } from "fflate";
+import { uint8ToBlob } from "./download";
 
 /** Crea un .docx reale (OOXML) compatibile con Microsoft Word */
 export function buildDocxBlob(opts: {
@@ -18,11 +19,10 @@ export function buildDocxBlob(opts: {
   };
 
   const zipped = zipSync(files, { level: 6 });
-  const copy = new Uint8Array(zipped.byteLength);
-  copy.set(zipped);
-  return new Blob([copy.buffer], {
-    type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  });
+  return uint8ToBlob(
+    zipped,
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+  );
 }
 
 function xmlEscape(value: string): string {

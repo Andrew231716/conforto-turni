@@ -1,4 +1,5 @@
 import type { Person, Program } from "./types";
+import { downloadBlob } from "./download";
 import {
   buildProgramTables,
   programFilenameSlug,
@@ -8,15 +9,6 @@ import {
 } from "./programTables";
 import { buildDocxBlob } from "./docxExport";
 import { buildXlsxBlob } from "./xlsxExport";
-
-function downloadBlob(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
 
 /**
  * Excel editabile (.xlsx OOXML, apre in Microsoft Excel / LibreOffice / Google Sheets).
@@ -50,10 +42,7 @@ export function downloadProgramExcel(program: Program, people: Person[]) {
 /**
  * Word editabile (.docx OOXML nativo). Sempre senza colonne Stato e Calendario.
  */
-export async function downloadProgramWord(
-  program: Program,
-  people: Person[]
-) {
+export function downloadProgramWord(program: Program, people: Person[]) {
   const tables = buildProgramTables(program, people);
   const blob = buildDocxBlob({
     title: program.title,
@@ -90,7 +79,16 @@ export async function copyProgramPlainText(
     await navigator.clipboard.writeText(text);
     return true;
   } catch {
-    return false;
+    // Fallback se clipboard API non disponibile
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.left = "-9999px";
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand("copy");
+    ta.remove();
+    return ok;
   }
 }
 

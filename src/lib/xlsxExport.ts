@@ -1,4 +1,5 @@
 import { strToU8, zipSync } from "fflate";
+import { uint8ToBlob } from "./download";
 
 /** Crea un .xlsx reale (OOXML) compatibile con Microsoft Excel */
 export function buildXlsxBlob(
@@ -24,12 +25,10 @@ export function buildXlsxBlob(
   });
 
   const zipped = zipSync(files, { level: 6 });
-  // Copia in un ArrayBuffer “puro” per Blob (evita SharedArrayBuffer typing)
-  const copy = new Uint8Array(zipped.byteLength);
-  copy.set(zipped);
-  return new Blob([copy.buffer], {
-    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  });
+  return uint8ToBlob(
+    zipped,
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+  );
 }
 
 function uniqueSheetNames(names: string[]): string[] {

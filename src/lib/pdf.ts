@@ -21,7 +21,7 @@ const NOTE_FULL =
 const NOTE_SIMPLE =
   "Versione da condividere: senza colonne Stato e Calendario.";
 const NOTE_EDITABLE =
-  "PDF editabile: senza Stato e Calendario. Puoi scrivere nelle caselle Note con Anteprima, Acrobat o un lettore PDF compatibile.";
+  "PDF editabile: senza Stato e Calendario. Ogni casella della tabella si può modificare con Anteprima, Acrobat o un lettore PDF compatibile.";
 
 export type { ExportLayout };
 export type PdfDownloadKind = ExportLayout | "editable";
@@ -70,15 +70,9 @@ function buildProgramPdfDoc(
   const contentWidth = pageWidth - MARGIN_X * 2;
   let fieldSeq = 0;
 
-  const COLS: Record<number, { cellWidth: number }> = editable
-    ? {
-        0: { cellWidth: 36 },
-        1: { cellWidth: 42 },
-        2: { cellWidth: 38 },
-        3: { cellWidth: 36 },
-        4: { cellWidth: 34 },
-      }
-    : layout === "simple"
+  // Stesse 4 colonne della versione semplice (niente Note / Stato / Calendario)
+  const COLS: Record<number, { cellWidth: number }> =
+    layout === "simple" || editable
       ? {
           0: { cellWidth: 46 },
           1: { cellWidth: 50 },
@@ -152,9 +146,8 @@ function buildProgramPdfDoc(
     doc.text("Visite a Casa o in Struttura (una visita a settimana)", MARGIN_X, y);
     y += 3;
 
-    const visitHead = editable
-      ? [...simpleHeaders("visita"), "Note"]
-      : layout === "simple"
+    const visitHead =
+      layout === "simple" || editable
         ? simpleHeaders("visita")
         : fullHeaders("visita");
 
@@ -163,12 +156,12 @@ function buildProgramPdfDoc(
       contentWidth,
       head: visitHead,
       rows: group.visits,
-      layout,
+      layout: editable ? "simple" : layout,
       editable,
       headFill: [30, 90, 120],
       columnStyles: COLS,
       linkColumn: layout === "full" ? 5 : -1,
-      nextFieldName: () => `note_v_${index}_${fieldSeq++}`,
+      nextFieldName: (row, col) => `v_${index}_${row}_${col}_${fieldSeq++}`,
     });
 
     y += 10;
@@ -189,9 +182,8 @@ function buildProgramPdfDoc(
     doc.text("Contatti Alternativi", MARGIN_X, y);
     y += 3;
 
-    const contactHead = editable
-      ? [...simpleHeaders("contatto"), "Note"]
-      : layout === "simple"
+    const contactHead =
+      layout === "simple" || editable
         ? simpleHeaders("contatto")
         : fullHeaders("contatto");
 
@@ -200,12 +192,12 @@ function buildProgramPdfDoc(
       contentWidth,
       head: contactHead,
       rows: group.contacts,
-      layout,
+      layout: editable ? "simple" : layout,
       editable,
       headFill: [70, 110, 90],
       columnStyles: COLS,
       linkColumn: layout === "full" ? 5 : -1,
-      nextFieldName: () => `note_c_${index}_${fieldSeq++}`,
+      nextFieldName: (row, col) => `c_${index}_${row}_${col}_${fieldSeq++}`,
     });
   });
 
@@ -224,14 +216,14 @@ function drawTable(
     headFill: [number, number, number];
     columnStyles: Record<number, { cellWidth: number }>;
     linkColumn: number;
-    nextFieldName: () => string;
+    nextFieldName: (row: number, col: number) => string;
   }
 ): number {
-  const body = opts.rows.map((r) => {
-    const cells = rowCells(r, opts.layout);
-    return opts.editable ? [...cells, ""] : cells;
-  });
-  const noteColumn = opts.editable ? opts.head.length - 1 : -1;
+  const valueRows = opts.rows.map((r) => rowCells(r, opts.layout));
+  // In modalità editabile le celle stampate restano vuote: il testo va nei campi AcroForm
+  const body = opts.editable
+    ? valueRows.map((cells) => cells.map(() => " "))
+    : valueRows;
 
   autoTable(doc, {
     rowPageBreak: "avoid",
@@ -248,7 +240,7 @@ function drawTable(
       textColor: [28, 43, 42],
       lineColor: [200, 210, 205],
       lineWidth: 0.2,
-      minCellHeight: opts.editable ? 10 : undefined,
+      minCellHeight: opts.editable ? 11 : undefined,
     },
     headStyles: {
       fillColor: opts.headFill,
@@ -260,9 +252,10 @@ function drawTable(
     alternateRowStyles: { fillColor: [248, 251, 249] },
     columnStyles: opts.columnStyles,
     didDrawCell: (data) => {
+      if (data.section !== "body") return;
+
       if (
         opts.linkColumn >= 0 &&
-        data.section === "body" &&
         data.column.index === opts.linkColumn
       ) {
         const row = opts.rows[data.row.index];
@@ -275,31 +268,59 @@ function drawTable(
             { url: row.calendarUrl }
           );
         }
+        return;
       }
 
-      if (
-        noteColumn >= 0 &&
-        data.section === "body" &&
-        data.column.index === noteColumn
-      ) {
-        // jsPDF AcroForm usa le stesse coordinate del documento (origine in alto a sinistra)
-        const x = data.cell.x + 1;
-        const y = data.cell.y + 1;
-        const w = Math.max(4, data.cell.width - 2);
-        const h = Math.max(6, data.cell.height - 2);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const TextField = (jsPDF as any).AcroForm.TextField;
-        const field = new TextField();
-        field.fieldName = opts.nextFieldName();
-        field.Rect = [x, y, w, h];
-        field.multiline = true;
-        field.value = "";
-        field.fontSize = 9;
-        doc.addField(field);
-      }
+      if (!opts.editable) return;
+
+      const values = valueRows[data.row.index];
+      if (!values) return;
+      const value = values[data.column.index] ?? "";
+      addEditableField(
+        doc,
+        opts.nextFieldName(data.row.index, data.column.index),
+        value === "—" ? "" : value,
+        data.cell.x,
+        data.cell.y,
+        data.cell.width,
+        data.cell.height
+      );
     },
   });
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return ((doc as any).lastAutoTable?.finalY ?? opts.startY) as number;
+}
+
+function addEditableField(
+  doc: jsPDF,
+  fieldName: string,
+  value: string,
+  cellX: number,
+  cellY: number,
+  cellW: number,
+  cellH: number
+) {
+  // jsPDF AcroForm: stesse coordinate del documento (origine in alto a sinistra)
+  const pad = 0.8;
+  const x = cellX + pad;
+  const y = cellY + pad;
+  const w = Math.max(4, cellW - pad * 2);
+  const h = Math.max(6, cellH - pad * 2);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const TextField = (jsPDF as any).AcroForm.TextField;
+  const field = new TextField();
+  field.fieldName = fieldName;
+  field.Rect = [x, y, w, h];
+  field.multiline = true;
+  field.value = value;
+  field.fontSize = 9;
+  field.maxFontSize = 9;
+  try {
+    field.backgroundColor = [255, 255, 255];
+  } catch {
+    // alcune versioni non espongono backgroundColor
+  }
+  doc.addField(field);
 }

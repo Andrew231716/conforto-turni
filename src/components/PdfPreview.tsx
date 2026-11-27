@@ -53,11 +53,19 @@ export function PdfPreviewModal({
   );
 
   const run = async (label: string, fn: () => void | Promise<void>) => {
+    if (busy) return;
+    setBusy(label);
+    // Lascia aggiornare l’UI prima del lavoro pesante
+    await new Promise((r) => window.setTimeout(r, 30));
     try {
-      setBusy(label);
       await fn();
     } catch (err) {
-      alert(`Export non riuscito: ${(err as Error).message}`);
+      console.error(err);
+      alert(
+        `Export non riuscito: ${
+          err instanceof Error ? err.message : String(err)
+        }`
+      );
     } finally {
       setBusy(null);
     }
@@ -75,15 +83,15 @@ export function PdfPreviewModal({
             Versioni senza Stato e Calendario
           </div>
           <p className="text-xs text-[var(--muted)]">
-            PDF editabile: campi Note compilabili. Excel (.xlsx) e Word (.docx):
-            modificabili in Microsoft Office / LibreOffice / Google. PDF da
-            inviare: solo lettura, ideale per WhatsApp.
+            PDF editabile: senza Stato/Calendario, caselle della tabella
+            modificabili. Excel e Word: modificabili in Office. PDF da inviare:
+            solo lettura.
           </p>
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
               className="btn-primary"
-              disabled={!!busy}
+              aria-busy={busy === "pdf-editable"}
               onClick={() =>
                 run("pdf-editable", () =>
                   downloadProgramPdf(
@@ -96,32 +104,32 @@ export function PdfPreviewModal({
                 )
               }
             >
-              {busy === "pdf-editable" ? "…" : "PDF editabile"}
+              {busy === "pdf-editable" ? "Preparazione…" : "PDF editabile"}
             </button>
             <button
               type="button"
               className="btn-ghost"
-              disabled={!!busy}
+              aria-busy={busy === "excel"}
               onClick={() =>
                 run("excel", () => downloadProgramExcel(program, people))
               }
             >
-              {busy === "excel" ? "…" : "Excel editabile"}
+              {busy === "excel" ? "Preparazione…" : "Excel editabile"}
             </button>
             <button
               type="button"
               className="btn-ghost"
-              disabled={!!busy}
+              aria-busy={busy === "word"}
               onClick={() =>
                 run("word", () => downloadProgramWord(program, people))
               }
             >
-              {busy === "word" ? "…" : "Word editabile"}
+              {busy === "word" ? "Preparazione…" : "Word editabile"}
             </button>
             <button
               type="button"
               className="btn-ghost"
-              disabled={!!busy}
+              aria-busy={busy === "pdf-simple"}
               onClick={() =>
                 run("pdf-simple", () =>
                   downloadProgramPdf(
@@ -134,12 +142,12 @@ export function PdfPreviewModal({
                 )
               }
             >
-              {busy === "pdf-simple" ? "…" : "PDF da inviare"}
+              {busy === "pdf-simple" ? "Preparazione…" : "PDF da inviare"}
             </button>
             <button
               type="button"
               className="btn-wa"
-              disabled={!!busy}
+              aria-busy={busy === "copy"}
               onClick={() =>
                 run("copy", async () => {
                   const ok = await copyProgramPlainText(program, people);
