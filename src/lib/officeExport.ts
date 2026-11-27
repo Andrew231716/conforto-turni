@@ -5,8 +5,8 @@ import {
   programToPlainText,
   rowCells,
   simpleHeaders,
-  type ProgramTableRow,
 } from "./programTables";
+import { buildDocxBlob } from "./docxExport";
 import { buildXlsxBlob } from "./xlsxExport";
 
 function downloadBlob(blob: Blob, filename: string) {
@@ -48,130 +48,32 @@ export function downloadProgramExcel(program: Program, people: Person[]) {
 }
 
 /**
- * Word editabile (.docx). Sempre senza colonne Stato e Calendario.
- * Import dinamico di `docx` per evitare problemi SSR.
+ * Word editabile (.docx OOXML nativo). Sempre senza colonne Stato e Calendario.
  */
 export async function downloadProgramWord(
   program: Program,
   people: Person[]
 ) {
-  const {
-    AlignmentType,
-    BorderStyle,
-    Document,
-    HeadingLevel,
-    Packer,
-    Paragraph,
-    Table,
-    TableCell,
-    TableRow,
-    TextRun,
-    WidthType,
-  } = await import("docx");
-
-  const border = {
-    top: { style: BorderStyle.SINGLE, size: 4, color: "C8D2CD" },
-    bottom: { style: BorderStyle.SINGLE, size: 4, color: "C8D2CD" },
-    left: { style: BorderStyle.SINGLE, size: 4, color: "C8D2CD" },
-    right: { style: BorderStyle.SINGLE, size: 4, color: "C8D2CD" },
-  };
-
-  const headerCell = (text: string, fill: string) =>
-    new TableCell({
-      borders: border,
-      width: { size: 2200, type: WidthType.DXA },
-      shading: { fill },
-      children: [
-        new Paragraph({
-          children: [
-            new TextRun({ text, bold: true, color: "FFFFFF", size: 20 }),
-          ],
-        }),
-      ],
-    });
-
-  const bodyCell = (text: string) =>
-    new TableCell({
-      borders: border,
-      width: { size: 2200, type: WidthType.DXA },
-      children: [
-        new Paragraph({
-          children: [new TextRun({ text, size: 20 })],
-        }),
-      ],
-    });
-
-  const makeTable = (headers: string[], rows: ProgramTableRow[], headFill: string) =>
-    new Table({
-      width: { size: 9360, type: WidthType.DXA },
-      rows: [
-        new TableRow({
-          children: headers.map((h) => headerCell(h, headFill)),
-        }),
-        ...rows.map(
-          (r) =>
-            new TableRow({
-              children: rowCells(r, "simple").map((c) => bodyCell(c)),
-            })
-        ),
-      ],
-    });
-
   const tables = buildProgramTables(program, people);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const children: any[] = [
-    new Paragraph({
-      heading: HeadingLevel.HEADING_1,
-      alignment: AlignmentType.CENTER,
-      children: [new TextRun({ text: program.title, bold: true })],
-    }),
-    new Paragraph({
-      alignment: AlignmentType.CENTER,
-      spacing: { after: 200 },
-      children: [
-        new TextRun({
-          text: `${program.monthsLabel} — versione editabile (senza Stato e Calendario)`,
-          italics: true,
-          size: 22,
-        }),
+  const blob = buildDocxBlob({
+    title: program.title,
+    subtitle: `${program.monthsLabel} — versione editabile (senza Stato e Calendario)`,
+    sections: tables.map((month) => ({
+      heading: month.label,
+      blocks: [
+        {
+          title: "Visite a Casa o in Struttura",
+          headers: simpleHeaders("visita"),
+          rows: month.visits.map((r) => rowCells(r, "simple")),
+        },
+        {
+          title: "Contatti Alternativi",
+          headers: simpleHeaders("contatto"),
+          rows: month.contacts.map((r) => rowCells(r, "simple")),
+        },
       ],
-    }),
-  ];
-
-  for (const month of tables) {
-    children.push(
-      new Paragraph({
-        heading: HeadingLevel.HEADING_2,
-        spacing: { before: 280, after: 120 },
-        children: [
-          new TextRun({ text: month.label, bold: true, color: "1F6F63" }),
-        ],
-      }),
-      new Paragraph({
-        spacing: { after: 80 },
-        children: [
-          new TextRun({
-            text: "Visite a Casa o in Struttura",
-            bold: true,
-            size: 22,
-          }),
-        ],
-      }),
-      makeTable(simpleHeaders("visita"), month.visits, "1E5A78"),
-      new Paragraph({
-        spacing: { before: 200, after: 80 },
-        children: [
-          new TextRun({ text: "Contatti Alternativi", bold: true, size: 22 }),
-        ],
-      }),
-      makeTable(simpleHeaders("contatto"), month.contacts, "466E5A")
-    );
-  }
-
-  const doc = new Document({
-    sections: [{ children }],
+    })),
   });
-  const blob = await Packer.toBlob(doc);
   downloadBlob(
     blob,
     `programma_${programFilenameSlug(program)}_editabile.docx`
